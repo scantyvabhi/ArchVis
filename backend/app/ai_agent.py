@@ -11,11 +11,11 @@ except ImportError:
     GENAI_INSTALLED = False
 
 class AIAgent:
-    """ArchVis AI system design architect using Gemini 1.5 Flash with fallback intelligence."""
+    """ArchVis AI system design architect using Gemini 3.5 Flash with fallback intelligence."""
 
     def __init__(self):
         self.api_key = os.getenv("GEMINI_API_KEY", "")
-        self.model_name = "gemini-1.5-flash"
+        self.model_name = "gemini-2.5-flash"
         if self.api_key and GENAI_INSTALLED:
             try:
                 genai.configure(api_key=self.api_key)

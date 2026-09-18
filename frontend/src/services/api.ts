@@ -39,6 +39,63 @@ export interface SimulateResponse {
   };
 }
 
+// Multi-Agent Types
+export interface AgentResultSummary {
+  agent: string;
+  status: string;
+  confidence: number;
+  reasoning: string;
+  execution_time_ms: number;
+  error?: string;
+}
+
+export interface ConsensusLogEntry {
+  round: number;
+  agent: string;
+  status: string;
+  confidence: number;
+  reasoning?: string;
+  consensus_score?: number;
+  consensus_reached?: boolean;
+}
+
+export interface AgentOrchestrationRequest {
+  prompt: string;
+  repo_url?: string;
+  canvas_state?: { nodes: ArchitectureNode[]; edges: ArchitectureEdge[] };
+  mode: AppMode;
+  markdown_spec?: string;
+  orchestration_mode?: 'sequential' | 'parallel' | 'consensus';
+  session_id?: string;
+}
+
+export interface AgentOrchestrationResponse {
+  session_id: string;
+  status: string;
+  diagram?: {
+    nodes: ArchitectureNode[];
+    edges: ArchitectureEdge[];
+    viewport: { x: number; y: number; zoom: number };
+    metadata: any;
+    summary: string;
+    recommendations: string[];
+    hld_view: any;
+    lld_view: any;
+    semantic_zoom: any;
+    analysis: any;
+  };
+  agent_results: Record<string, AgentResultSummary>;
+  consensus_log: ConsensusLogEntry[];
+  total_execution_time_ms: number;
+  error?: string;
+}
+
+export interface AvailableModelsResponse {
+  available_models: Record<string, boolean>;
+  default_preference: string;
+  fallback_order: string[];
+}
+
 export async function generateArchitecture(
   prompt: string,
   mode: AppMode = 'pro'
@@ -88,6 +145,74 @@ export async function sendChatMessage(
       canvas_state: canvasState,
       mode,
     }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'Network error' }));
+    throw new Error(errorData.detail || `Server error: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+// Multi-Agent API Functions
+export async function orchestrateAgents(
+  request: AgentOrchestrationRequest
+): Promise<AgentOrchestrationResponse> {
+  const response = await fetch(`${API_BASE_URL}/agent/orchestrate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'Network error' }));
+    throw new Error(errorData.detail || `Server error: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function agentChat(
+  message: string,
+  canvasState: { nodes: ArchitectureNode[]; edges: ArchitectureEdge[] },
+  mode: AppMode = 'pro'
+): Promise<ChatResponse> {
+  const response = await fetch(`${API_BASE_URL}/agent/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message,
+      canvas_state: canvasState,
+      mode,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'Network error' }));
+    throw new Error(errorData.detail || `Server error: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function getAvailableModels(): Promise<AvailableModelsResponse> {
+  const response = await fetch(`${API_BASE_URL}/agent/models`);
+  if (!response.ok) {
+    return { available_models: {}, default_preference: 'nemotron', fallback_order: [] };
+  }
+  return response.json();
+}
+
+export async function validateDiagram(
+  nodes: ArchitectureNode[],
+  edges: ArchitectureEdge[],
+  mode: AppMode = 'pro'
+): Promise<any> {
+  const response = await fetch(`${API_BASE_URL}/agent/validate-diagram`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nodes, edges, mode }),
   });
 
   if (!response.ok) {

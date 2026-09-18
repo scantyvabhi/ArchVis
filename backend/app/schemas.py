@@ -89,3 +89,52 @@ class SimulateResponse(BaseModel):
     valid: bool
     bottlenecks: List[BottleneckItem]
     metrics: SimulationMetricsEstimate
+
+
+# Multi-Agent System Schemas
+class AgentOrchestrationRequest(BaseModel):
+    prompt: str = Field(..., min_length=3, description="System design prompt or question")
+    repo_url: Optional[str] = Field(default=None, description="Optional GitHub repository URL to analyze")
+    canvas_state: Optional[CanvasState] = Field(default=None, description="Current canvas state for context")
+    mode: Literal['learner', 'pro'] = Field(default='pro')
+    markdown_spec: Optional[str] = Field(default=None, description="Optional markdown specification to reconcile")
+    orchestration_mode: Literal['sequential', 'parallel', 'consensus'] = Field(default='consensus')
+    session_id: Optional[str] = Field(default=None, description="Optional session ID for continuity")
+
+class AgentResultSummary(BaseModel):
+    agent: str
+    status: str
+    confidence: float
+    reasoning: str
+    execution_time_ms: int
+    error: Optional[str] = None
+
+class ConsensusLogEntry(BaseModel):
+    round: int
+    agent: str
+    status: str
+    confidence: float
+    reasoning: Optional[str] = None
+    consensus_score: Optional[float] = None
+    consensus_reached: Optional[bool] = None
+
+class AgentOrchestrationResponse(BaseModel):
+    session_id: str
+    status: str
+    diagram: Optional[Dict[str, Any]] = None
+    agent_results: Dict[str, AgentResultSummary] = Field(default_factory=dict)
+    consensus_log: List[ConsensusLogEntry] = Field(default_factory=list)
+    total_execution_time_ms: int
+    error: Optional[str] = None
+
+class DiagramSpecResponse(BaseModel):
+    nodes: List[ArchitectureNode]
+    edges: List[ArchitectureEdge]
+    viewport: Dict[str, float]
+    metadata: Dict[str, Any]
+    summary: str
+    recommendations: List[str]
+    hld_view: Dict[str, Any]
+    lld_view: Dict[str, Any]
+    semantic_zoom: Dict[str, Any]
+    analysis: Dict[str, Any]

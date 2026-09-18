@@ -14,6 +14,9 @@ import {
   RotateCcw,
   Loader2,
   Paperclip,
+  Brain,
+  GitBranch,
+  Layers,
 } from 'lucide-react';
 import { AppMode, ChatMessage, ArchitectureNode, ArchitectureEdge } from '../../types/architecture';
 
@@ -22,6 +25,7 @@ interface FloatingAssistantProps {
   onToggleMode: (newMode: AppMode) => void;
   onGenerateArchitecture: (prompt: string) => Promise<void>;
   onSendMessage: (message: string) => Promise<void>;
+  onOrchestrateAgents: (prompt: string, repoUrl?: string) => Promise<void>;
   onOpenRepoIngestion: () => void;
   messages: ChatMessage[];
   isLoading: boolean;
@@ -67,10 +71,25 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
       query.toLowerCase().startsWith('build') ||
       query.toLowerCase().startsWith('create');
 
+    // Check for multi-agent trigger keywords
+    const isMultiAgentRequest =
+      query.toLowerCase().startsWith('analyze') ||
+      query.toLowerCase().startsWith('orchestrate') ||
+      query.toLowerCase().startsWith('multi-agent') ||
+      query.toLowerCase().startsWith('full analysis') ||
+      query.toLowerCase().includes('github.com/') ||
+      query.toLowerCase().includes('repo') && (query.toLowerCase().includes('analyze') || query.toLowerCase().includes('understand'));
+
     if (isDesignRequest && !isOpen) {
       await onGenerateArchitecture(query);
+    } else if (isMultiAgentRequest) {
+      // Extract repo URL if present
+      const repoUrlMatch = query.match(/https?:\/\/github\.com\/[\w-]+\/[\w-]+/);
+      const repoUrl = repoUrlMatch ? repoUrlMatch[0] : undefined;
+      if (!isOpen) setIsOpen(true);
+      await onOrchestrateAgents(query, repoUrl);
     } else {
-      // Normal chat question
+      // Normal chat question - use multi-agent chat
       if (!isOpen) setIsOpen(true);
       await onSendMessage(query);
     }
@@ -82,6 +101,13 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
     'Explain the data flow step-by-step',
     'Design Netflix video streaming with multi-region CDN',
     'Design Uber ride-matching with Redis Geospatial',
+  ];
+
+  const multiAgentPrompts = [
+    'Analyze this GitHub repo: https://github.com/fastapi/fastapi',
+    'Full multi-agent analysis of my diagram',
+    'Orchestrate agents to design a scalable system',
+    'Compare my diagram with repo architecture',
   ];
 
   return (
@@ -135,6 +161,20 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
                         setInputText(prompt);
                       }}
                       className="text-[10px] bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-600 px-2.5 py-1 rounded-full border border-slate-200/80 transition-colors"
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-1.5 justify-center pt-1 border-t border-slate-100 mt-2">
+                  <span className="text-[9px] text-slate-400 px-1 self-center">Multi-Agent:</span>
+                  {multiAgentPrompts.slice(0, 2).map((prompt, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        setInputText(prompt);
+                      }}
+                      className="text-[10px] bg-purple-50 hover:bg-purple-100 hover:text-purple-700 text-purple-600 px-2.5 py-1 rounded-full border border-purple-200/80 transition-colors"
                     >
                       {prompt}
                     </button>
@@ -209,6 +249,19 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
         >
           {mode === 'learner' ? <BookOpen className="w-3.5 h-3.5" /> : <Briefcase className="w-3.5 h-3.5" />}
           <span className="hidden sm:inline capitalize">{mode}</span>
+        </button>
+
+        {/* Multi-Agent Orchestration Button */}
+        <button
+          type="button"
+          onClick={() => {
+            setInputText('Full multi-agent analysis of my diagram');
+            if (!isOpen) setIsOpen(true);
+          }}
+          title="Run full multi-agent orchestration (Repo Fetcher → Architecture Analyst → Diagram Builder)"
+          className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors shrink-0"
+        >
+          <Brain className="w-4 h-4" />
         </button>
 
         {/* Ingestion Button (GitHub / Doc) */}

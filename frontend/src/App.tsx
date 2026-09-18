@@ -33,6 +33,7 @@ import {
   generateArchitecture,
   parseRepo,
   sendChatMessage,
+  orchestrateAgents,
   checkBackendHealth,
 } from './services/api';
 
@@ -506,6 +507,95 @@ export function App() {
     }
   };
 
+  // Multi-Agent Orchestration
+  const handleOrchestrateAgents = async (prompt: string, repoUrl?: string) => {
+    setIsAiLoading(true);
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `user-${Date.now()}`,
+        sender: 'user',
+        text: prompt,
+        timestamp: new Date().toISOString(),
+      },
+    ]);
+
+    try {
+      const { orchestrateAgents } = await import('./services/api');
+      const result = await orchestrateAgents({
+        prompt,
+        repo_url: repoUrl,
+        canvas_state: { nodes, edges },
+        mode,
+        orchestration_mode: 'consensus',
+      });
+
+      if (result.diagram) {
+        const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
+          result.diagram.nodes,
+          result.diagram.edges,
+          'LR'
+        );
+        setNodes(layoutedNodes);
+        setEdges(layoutedEdges);
+
+        let reply = `🤖 **Multi-Agent Orchestration Complete**\n\n`;
+        reply += `**Session:** ${result.session_id}\n`;
+        reply += `**Execution Time:** ${result.total_execution_time_ms}ms\n\n`;
+        reply += `**Summary:** ${result.diagram.summary}\n\n`;
+        
+        if (result.diagram.recommendations?.length) {
+          reply += `**Recommendations:**\n` + result.diagram.recommendations.map((r: string) => `• ${r}`).join('\n') + '\n\n';
+        }
+
+        // Add agent execution summary
+        reply += `**Agent Pipeline:**\n`;
+        Object.entries(result.agent_results).forEach(([agent, summary]) => {
+          reply += `• ${agent}: ${summary.status} (confidence: ${(summary.confidence * 100).toFixed(0)}%)\n`;
+        });
+
+        if (result.consensus_log?.length) {
+          const lastConsensus = result.consensus_log[result.consensus_log.length - 1];
+          if (lastConsensus.consensus_reached) {
+            reply += `\n✅ **Consensus Reached** (score: ${(lastConsensus.consensus_score || 0) * 100}%)`;
+          }
+        }
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `ai-${Date.now()}`,
+            sender: 'assistant',
+            text: reply,
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `err-${Date.now()}`,
+            sender: 'assistant',
+            text: `⚠️ Multi-agent orchestration failed: ${result.error || 'Unknown error'}`,
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+      }
+    } catch (err: any) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `err-${Date.now()}`,
+          sender: 'assistant',
+          text: `⚠️ Multi-agent orchestration error: ${err.message}`,
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-slate-50 text-slate-800">
       {/* Top Navigation Bar */}
@@ -563,6 +653,7 @@ export function App() {
           onToggleMode={setMode}
           onGenerateArchitecture={handleGenerateArchitecture}
           onSendMessage={handleSendChatMessage}
+          onOrchestrateAgents={handleOrchestrateAgents}
           onOpenRepoIngestion={() => setIsRepoModalOpen(true)}
           messages={messages}
           isLoading={isAiLoading}
