@@ -1,0 +1,258 @@
+import React, { useState, useEffect } from 'react';
+import { X, Trash2, Save, Cpu, Gauge, AlertCircle, RefreshCw } from 'lucide-react';
+import { ArchitectureNode, ComponentCategory } from '../../types/architecture';
+
+interface NodeConfigDrawerProps {
+  selectedNode: ArchitectureNode | null;
+  onClose: () => void;
+  onUpdateNode: (id: string, updatedData: any) => void;
+  onDeleteNode: (id: string) => void;
+}
+
+export const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
+  selectedNode,
+  onClose,
+  onUpdateNode,
+  onDeleteNode,
+}) => {
+  const [formData, setFormData] = useState<any>(null);
+
+  useEffect(() => {
+    if (selectedNode) {
+      setFormData({
+        label: selectedNode.data.label || '',
+        category: selectedNode.data.category || 'service',
+        tech: selectedNode.data.tech || '',
+        latency: selectedNode.data.latency ?? 20,
+        rps: selectedNode.data.rps ?? 1000,
+        capacity: selectedNode.data.capacity ?? 5000,
+        failureRate: selectedNode.data.failureRate ?? 0.1,
+        replication: selectedNode.data.replication || '',
+        description: selectedNode.data.description || '',
+        explanation: selectedNode.data.explanation || '',
+      });
+    } else {
+      setFormData(null);
+    }
+  }, [selectedNode]);
+
+  if (!selectedNode || !formData) return null;
+
+  const handleChange = (field: string, value: any) => {
+    setFormData((prev: any) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSave = () => {
+    onUpdateNode(selectedNode.id, formData);
+  };
+
+  const handleDelete = () => {
+    onDeleteNode(selectedNode.id);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-y-0 right-0 w-96 bg-white/98 backdrop-blur-md shadow-2xl border-l border-slate-200 z-30 flex flex-col transition-all duration-300">
+      {/* Drawer Header */}
+      <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/70">
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 bg-blue-100 text-blue-600 rounded-md">
+            <Cpu className="w-4 h-4" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-sm text-slate-800">Node Configuration</h3>
+            <p className="text-[11px] font-mono text-slate-400">ID: {selectedNode.id}</p>
+          </div>
+        </div>
+        <button
+          onClick={onClose}
+          className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-md transition-colors"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Drawer Body */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+        {/* Component Label & Tech */}
+        <div className="space-y-3">
+          <div>
+            <label className="block text-slate-600 font-medium mb-1">Component Name</label>
+            <input
+              type="text"
+              value={formData.label}
+              onChange={(e) => handleChange('label', e.target.value)}
+              className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-md focus:bg-white focus:ring-1 focus:ring-blue-500 focus:outline-none"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-slate-600 font-medium mb-1">Category</label>
+              <select
+                value={formData.category}
+                onChange={(e) => handleChange('category', e.target.value as ComponentCategory)}
+                className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md focus:bg-white focus:ring-1 focus:ring-blue-500 focus:outline-none text-xs"
+              >
+                <option value="api">API / Client</option>
+                <option value="gateway">Gateway / LB</option>
+                <option value="service">Microservice</option>
+                <option value="database">Database</option>
+                <option value="cache">Cache</option>
+                <option value="queue">Message Queue</option>
+                <option value="storage">Storage</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-slate-600 font-medium mb-1">Tech Stack</label>
+              <input
+                type="text"
+                value={formData.tech}
+                placeholder="e.g. Redis, Kafka, Go"
+                onChange={(e) => handleChange('tech', e.target.value)}
+                className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-md focus:bg-white focus:ring-1 focus:ring-blue-500 focus:outline-none"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Simulation Parameter Controls */}
+        <div className="p-3 bg-slate-50 rounded-lg border border-slate-200/80 space-y-3">
+          <div className="flex items-center gap-1.5 text-slate-700 font-semibold border-b border-slate-200 pb-1.5">
+            <Gauge className="w-3.5 h-3.5 text-blue-600" />
+            <span>Simulation Parameters</span>
+          </div>
+
+          <div>
+            <div className="flex justify-between items-center mb-1">
+              <label className="text-slate-600">Base Latency (ms)</label>
+              <span className="font-mono text-slate-700 font-semibold">{formData.latency} ms</span>
+            </div>
+            <input
+              type="range"
+              min="1"
+              max="500"
+              value={formData.latency}
+              onChange={(e) => handleChange('latency', Number(e.target.value))}
+              className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+            />
+          </div>
+
+          <div>
+            <div className="flex justify-between items-center mb-1">
+              <label className="text-slate-600">Request Rate (RPS)</label>
+              <span className="font-mono text-slate-700 font-semibold">{formData.rps.toLocaleString()}</span>
+            </div>
+            <input
+              type="range"
+              min="100"
+              max="50000"
+              step="100"
+              value={formData.rps}
+              onChange={(e) => handleChange('rps', Number(e.target.value))}
+              className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+            />
+          </div>
+
+          <div>
+            <div className="flex justify-between items-center mb-1">
+              <label className="text-slate-600">Max Capacity (RPS)</label>
+              <span className="font-mono text-slate-700 font-semibold">{formData.capacity.toLocaleString()}</span>
+            </div>
+            <input
+              type="range"
+              min="200"
+              max="60000"
+              step="200"
+              value={formData.capacity}
+              onChange={(e) => handleChange('capacity', Number(e.target.value))}
+              className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+            />
+          </div>
+
+          <div>
+            <div className="flex justify-between items-center mb-1">
+              <label className="text-slate-600">Failure Rate (%)</label>
+              <span className="font-mono text-slate-700 font-semibold">{formData.failureRate}%</span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="15"
+              step="0.1"
+              value={formData.failureRate}
+              onChange={(e) => handleChange('failureRate', Number(e.target.value))}
+              className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+            />
+          </div>
+        </div>
+
+        {/* High-Level Spec & Replication */}
+        <div className="space-y-3">
+          <div>
+            <label className="block text-slate-600 font-medium mb-1">Replication / High Availability</label>
+            <input
+              type="text"
+              placeholder="e.g. Primary-Replica, Multi-AZ, Raft 3x"
+              value={formData.replication}
+              onChange={(e) => handleChange('replication', e.target.value)}
+              className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-md focus:bg-white focus:ring-1 focus:ring-blue-500 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-slate-600 font-medium mb-1">Component Description</label>
+            <textarea
+              rows={2}
+              value={formData.description}
+              onChange={(e) => handleChange('description', e.target.value)}
+              placeholder="What this component does in the system..."
+              className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-md focus:bg-white focus:ring-1 focus:ring-blue-500 focus:outline-none resize-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-slate-600 font-medium mb-1">
+              Design Rationale (Learner Explanation)
+            </label>
+            <textarea
+              rows={3}
+              value={formData.explanation}
+              onChange={(e) => handleChange('explanation', e.target.value)}
+              placeholder="Why this technology was chosen over alternatives..."
+              className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-md focus:bg-white focus:ring-1 focus:ring-blue-500 focus:outline-none resize-none"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Drawer Footer Actions */}
+      <div className="p-3 border-t border-slate-200 bg-slate-50/80 flex items-center justify-between gap-2">
+        <button
+          onClick={handleDelete}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors text-xs font-medium"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+          Delete
+        </button>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onClose}
+            className="px-3 py-1.5 rounded-md text-slate-600 hover:bg-slate-200 transition-colors text-xs"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            className="flex items-center gap-1.5 px-4 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs shadow-sm transition-colors"
+          >
+            <Save className="w-3.5 h-3.5" />
+            Save Changes
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
