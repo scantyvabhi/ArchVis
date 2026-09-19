@@ -41,6 +41,8 @@ Key outputs:
             "analyze_readme",
             "detect_architecture_pattern",
             "infer_components",
+            "match_preset_architecture",
+            "apply_preset_to_repo",
         ]
 
     async def execute(self, context: AgentContext) -> AgentResult:
@@ -103,6 +105,16 @@ Key outputs:
             components_result = await self._call_tool("infer_components", repo_context=repo_context, tech_stack=tech_result.data)
             tool_calls.append({"tool": "infer_components", "result": components_result.success})
 
+            # Match to preset architecture
+            preset_match_result = await self._call_tool("match_preset_architecture", repo_analysis=repo_context, tech_stack=tech_result.data)
+            tool_calls.append({"tool": "match_preset_architecture", "result": preset_match_result.success})
+
+            # Apply preset if matched
+            if preset_match_result.success and preset_match_result.data.get("matched_preset_id"):
+                apply_preset_result = await self._call_tool("apply_preset_to_repo", matched_preset_id=preset_match_result.data["matched_preset_id"], repo_analysis=repo_context)
+                tool_calls.append({"tool": "apply_preset_to_repo", "result": apply_preset_result.success})
+                reasoning_parts.append(f"Matched preset: {preset_match_result.data.get('matched_preset_name')} (confidence: {preset_match_result.data.get('confidence', 0):.0%})")
+
             # Use LLM to synthesize and reason about the architecture
             synthesis_prompt = f"""
 Analyze this GitHub repository and synthesize a comprehensive architectural understanding:
@@ -152,6 +164,15 @@ Respond ONLY with valid JSON.
             )
 
             analysis = json.loads(llm_response)
+
+            # Add preset match info to analysis if available
+            if preset_match_result.success and preset_match_result.data.get("matched_preset_id"):
+                analysis["preset_match"] = {
+                    "preset_id": preset_match_result.data["matched_preset_id"],
+                    "preset_name": preset_match_result.data["matched_preset_name"],
+                    "confidence": preset_match_result.data["confidence"],
+                    "all_scores": preset_match_result.data.get("all_scores", {}),
+                }
 
             # Store in shared memory for other agents
             context.shared_memory["repo_analysis"] = analysis
@@ -398,3 +419,116 @@ async def infer_components(repo_context: Dict[str, Any], tech_stack: Dict[str, A
             ]
 
     return components
+
+
+async def match_preset_architecture(repo_analysis: Dict[str, Any], tech_stack: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Match the analyzed repository to the closest preset architecture.
+    Returns the preset ID and a mapping of repo components to preset components.
+    """
+    # Preset definitions with their characteristic signatures
+    presets = {
+        "ecommerce-microservices": {
+            "name": "E-Commerce Microservices",
+            "keywords": ["ecommerce", "shop", "store", "cart", "order", "payment", "product", "catalog", "inventory"],
+            "tech_indicators": {
+                "frameworks": ["go", "node.js", "express", "nestjs", "spring", "fastapi", "django"],
+                "databases": ["postgresql", "mysql", "aurora"],
+                "caches": ["redis"],
+                "queues": ["kafka", "rabbitmq"],
+            },
+            "pattern": "microservices",
+            "min_services": 3,
+        },
+        "video-streaming": {
+            "name": "Global Video Streaming (YouTube/Netflix)",
+            "keywords": ["video", "stream", "transcode", "hls", "dash", "media", "encoding", "ffmpeg", "cdn"],
+            "tech_indicators": {
+                "frameworks": ["fastapi", "go", "node.js"],
+                "queues": ["kafka", "rabbitmq", "sqs"],
+                "storage": ["s3", "gcs", "blob"],
+            },
+            "pattern": "microservices",
+            "min_services": 2,
+        },
+        "learner-url-shortener": {
+            "name": "URL Shortener (TinyURL) - Learner Guide",
+            "keywords": ["url", "shorten", "link", "redirect", "tinyurl", "bitly"],
+            "tech_indicators": {
+                "frameworks": ["node.js", "express", "fastapi", "flask", "go"],
+                "caches": ["redis"],
+                "databases": ["postgresql", "mysql"],
+            },
+            "pattern": "monolith",
+            "min_services": 1,
+        },
+    }
+
+    # Analyze repo for preset matching
+    repo_name = repo_analysis.get("repo", "").lower()
+    readme = repo_analysis.get("readme_excerpt", "").lower()
+    detected_tech = [t.lower() for t in repo_analysis.get("detected_tech", [])]
+    files = [f.lower() for f in repo_analysis.get("files", [])]
+    pattern = repo_analysis.get("architecture_pattern", "unknown")
+
+    best_match = None
+    best_score = 0
+    match_details = {}
+
+    for preset_id, preset in presets.items():
+        score = 0
+        details = {"keyword_matches": [], "tech_matches": []}
+
+        # Check keyword matches in repo name and readme
+        for keyword in preset["keywords"]:
+            if keyword in repo_name or keyword in readme:
+                score += 10
+                details["keyword_matches"].append(keyword)
+
+        # Check tech stack matches
+        for category, techs in preset["tech_indicators"].items():
+            if category in tech_stack:
+                for tech in techs:
+                    if any(tech.lower() in dt for dt in detected_tech):
+                        score += 5
+                        details["tech_matches"].append(f"{category}:{tech}")
+
+        # Pattern match bonus
+        if preset["pattern"] == pattern:
+            score += 15
+
+        # Service count check
+        services_count = len([t for t in tech_stack.get("frameworks", [])])
+        if services_count >= preset.get("min_services", 1):
+            score += 5
+
+        match_details[preset_id] = {"score": score, "details": details}
+
+        if score > best_score:
+            best_score = score
+            best_match = preset_id
+
+    # Return match result with confidence
+    confidence = min(best_score / 50.0, 1.0) if best_match else 0.0
+
+    return {
+        "matched_preset_id": best_match,
+        "matched_preset_name": presets[best_match]["name"] if best_match else None,
+        "confidence": confidence,
+        "all_scores": match_details,
+        "reasoning": f"Best match: {best_match} with score {best_score}" if best_match else "No strong preset match found",
+    }
+
+
+async def apply_preset_to_repo(matched_preset_id: str, repo_analysis: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Apply the matched preset architecture, customized with repo-specific details.
+    """
+    # This would typically load the preset from frontend constants
+    # For now, return the repo analysis with preset reference
+    return {
+        "preset_id": matched_preset_id,
+        "preset_applied": True,
+        "customized_architecture": repo_analysis,
+        "note": "Frontend will render the preset with repo-specific customizations",
+    }

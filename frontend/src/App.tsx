@@ -30,12 +30,13 @@ import {
   parseImportedJson,
 } from './utils/export';
 import {
+  orchestrateAgents,
   generateArchitecture,
   parseRepo,
   sendChatMessage,
-  orchestrateAgents,
   checkBackendHealth,
 } from './services/api';
+import { AgentThinkingStep } from './types/architecture';
 
 export function App() {
   // Load initial preset (e.g. E-Commerce Microservices)
@@ -49,6 +50,7 @@ export function App() {
   const [isRepoModalOpen, setIsRepoModalOpen] = useState(false);
   const [backendHealthy, setBackendHealthy] = useState(false);
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const [currentAgentThinking, setCurrentAgentThinking] = useState<AgentThinkingStep | undefined>(undefined);
 
   // Live Simulation Engine State
   const [isSimulating, setIsSimulating] = useState(false);
@@ -383,7 +385,7 @@ export function App() {
 
       let reply = `Synthesized architecture for: "${prompt}"\n\n${result.summary}`;
       if (result.recommendations && result.recommendations.length > 0) {
-        reply += `\n\n**Key Design Considerations:**\n` + result.recommendations.map((r) => `• ${r}`).join('\n');
+        reply += `\n\n**Key Design Considerations:**\n` + result.recommendations.map((r: string) => `• ${r}`).join('\n');
       }
 
       setMessages((prev) => [
@@ -561,6 +563,25 @@ export function App() {
           }
         }
 
+        // Build thinking steps for the message
+        const thinkingSteps = result.thinking_steps?.map((step: any) => ({
+          agent: step.agent,
+          agentName: step.agent_name,
+          status: step.status,
+          timestamp: step.timestamp,
+          reasoning: step.reasoning,
+          toolCalls: step.tool_calls?.map((tc: any) => ({
+            tool: tc.tool,
+            args: tc.args,
+            result: tc.result,
+            durationMs: tc.durationMs,
+          })),
+          modelUsed: step.model_used,
+          modelFallback: step.model_fallback,
+          confidence: step.confidence,
+          outputPreview: step.output_preview,
+        })) || [];
+
         setMessages((prev) => [
           ...prev,
           {
@@ -568,6 +589,7 @@ export function App() {
             sender: 'assistant',
             text: reply,
             timestamp: new Date().toISOString(),
+            thinking: thinkingSteps,
           },
         ]);
       } else {
@@ -658,6 +680,7 @@ export function App() {
           messages={messages}
           isLoading={isAiLoading}
           nodesCount={nodes.length}
+          currentAgentThinking={currentAgentThinking}
         />
 
         {/* Repo & Document Ingestion Modal */}

@@ -42,6 +42,8 @@ Key outputs:
             "compare_architectures",
             "generate_hld_spec",
             "generate_lld_spec",
+            "match_prompt_to_preset",
+            "generate_architecture_from_prompt",
         ]
 
     async def execute(self, context: AgentContext) -> AgentResult:
@@ -63,6 +65,26 @@ Key outputs:
 
             reasoning_parts.append(f"Analyzing architecture for: {user_prompt[:100]}...")
             reasoning_parts.append(f"Mode: {mode}, Has repo analysis: {bool(repo_analysis)}, Has canvas: {bool(canvas_state)}")
+
+            # Check if this is a prompt-based architecture generation (no repo)
+            is_prompt_only = not repo_analysis and not repo_context and user_prompt
+
+            if is_prompt_only:
+                # Match prompt to preset
+                preset_match_result = await self._call_tool("match_prompt_to_preset", prompt=user_prompt, mode=mode)
+                tool_calls.append({"tool": "match_prompt_to_preset", "result": preset_match_result.success})
+                reasoning_parts.append(f"Preset match: {preset_match_result.data.get('matched_preset_name') if preset_match_result.data else 'None'} (confidence: {preset_match_result.data.get('confidence', 0):.0%})")
+
+                # Generate architecture from prompt/preset
+                arch_gen_result = await self._call_tool("generate_architecture_from_prompt", 
+                    prompt=user_prompt, mode=mode, matched_preset=preset_match_result.data or {})
+                tool_calls.append({"tool": "generate_architecture_from_prompt", "result": arch_gen_result.success})
+
+                # Use the generated architecture as the base for analysis
+                if arch_gen_result.success and arch_gen_result.data:
+                    generated_arch = arch_gen_result.data
+                    repo_analysis = generated_arch  # Use as base for further analysis
+                    reasoning_parts.append(f"Generated architecture from preset: {generated_arch.get('architecture_pattern')} with {len(generated_arch.get('components', []))} components")
 
             # Analyze bottlenecks
             bottleneck_result = await self._call_tool("analyze_bottlenecks", 
@@ -691,4 +713,364 @@ async def estimate_costs(repo_analysis: Dict, canvas_state: Dict) -> Dict[str, A
         "breakdown": breakdown,
         "assumptions": "AWS us-east-1, on-demand pricing, moderate traffic",
         "optimization_potential": "Reserved instances (30-40%), Savings Plans, Spot for batch",
+    }
+
+
+# Preset matching and prompt-based architecture generation
+PRESET_DEFINITIONS = {
+    "ecommerce-microservices": {
+        "id": "ecommerce-microservices",
+        "name": "E-Commerce Microservices",
+        "description": "Scalable transactional e-commerce engine with caching, message queue decoupling, and database replication.",
+        "mode": "pro",
+        "keywords": ["ecommerce", "flipkart", "amazon", "shop", "store", "cart", "order", "payment", "product", "catalog", "inventory", "marketplace", "retail", "shopping"],
+        "tech_indicators": {
+            "frameworks": ["go", "node.js", "express", "nestjs", "spring", "fastapi", "django", "java", "python"],
+            "databases": ["postgresql", "mysql", "aurora", "postgres"],
+            "caches": ["redis"],
+            "queues": ["kafka", "rabbitmq"],
+        },
+        "pattern": "microservices",
+        "components_template": [
+            {"type": "api", "label": "Client Apps", "tech": "React Native & Web", "capacity": 20000},
+            {"type": "gateway", "label": "API Gateway", "tech": "Kong / Envoy", "capacity": 12000},
+            {"type": "service", "label": "Order Service", "tech": "Go / gRPC", "capacity": 3500},
+            {"type": "service", "label": "User & Catalog Service", "tech": "Node.js / Express", "capacity": 5000},
+            {"type": "cache", "label": "Redis Cluster", "tech": "Redis 7.2", "capacity": 25000},
+            {"type": "queue", "label": "Kafka Event Bus", "tech": "Apache Kafka", "capacity": 30000},
+            {"type": "service", "label": "Notification Worker", "tech": "Python Celery", "capacity": 2500},
+            {"type": "database", "label": "Postgres Primary", "tech": "PostgreSQL", "capacity": 3000},
+        ],
+    },
+    "video-streaming": {
+        "id": "video-streaming",
+        "name": "Global Video Streaming (YouTube/Netflix)",
+        "description": "High-throughput video upload, asynchronous multi-bitrate transcoding pipeline, and global CDN delivery.",
+        "mode": "pro",
+        "keywords": ["video", "youtube", "netflix", "stream", "transcode", "hls", "dash", "media", "encoding", "ffmpeg", "cdn", "ott", "streaming"],
+        "tech_indicators": {
+            "frameworks": ["fastapi", "go", "node.js", "python"],
+            "queues": ["kafka", "rabbitmq", "sqs"],
+            "storage": ["s3", "gcs", "blob"],
+        },
+        "pattern": "microservices",
+        "components_template": [
+            {"type": "api", "label": "Viewer & Creator Clients", "tech": "Smart TVs & Web Players", "capacity": 50000},
+            {"type": "gateway", "label": "Global CDN Network", "tech": "Fastly / Akamai Edge", "capacity": 60000},
+            {"type": "gateway", "label": "Ingress Load Balancer", "tech": "NGINX Plus / AWS ALB", "capacity": 15000},
+            {"type": "service", "label": "Video Metadata Service", "tech": "FastAPI / gRPC", "capacity": 6000},
+            {"type": "queue", "label": "Transcode Queue", "tech": "RabbitMQ / AWS SQS", "capacity": 10000},
+            {"type": "service", "label": "Transcoding Cluster", "tech": "FFmpeg GPU Workers", "capacity": 800},
+            {"type": "storage", "label": "Object Storage (S3)", "tech": "Amazon S3", "capacity": 15000},
+            {"type": "database", "label": "NoSQL Metadata DB", "tech": "ScyllaDB / Cassandra", "capacity": 10000},
+        ],
+    },
+    "learner-url-shortener": {
+        "id": "learner-url-shortener",
+        "name": "URL Shortener (TinyURL) - Learner Guide",
+        "description": "Clear educational architecture showing how high-read systems scale using reverse proxy, cache, and database.",
+        "mode": "learner",
+        "keywords": ["url", "shorten", "tinyurl", "bitly", "link", "redirect", "shortener"],
+        "tech_indicators": {
+            "frameworks": ["node.js", "express", "fastapi", "flask", "go", "python"],
+            "caches": ["redis"],
+            "databases": ["postgresql", "mysql", "postgres"],
+        },
+        "pattern": "monolith",
+        "components_template": [
+            {"type": "api", "label": "Web Browser / Mobile", "tech": "Client Browser", "capacity": 10000},
+            {"type": "gateway", "label": "Load Balancer", "tech": "NGINX Reverse Proxy", "capacity": 8000},
+            {"type": "service", "label": "URL Shortener App", "tech": "Node.js / FastAPI", "capacity": 4000},
+            {"type": "cache", "label": "Redis Cache", "tech": "Redis", "capacity": 15000},
+            {"type": "database", "label": "Persistent Database", "tech": "PostgreSQL", "capacity": 2500},
+        ],
+    },
+    "chat-messaging": {
+        "id": "chat-messaging",
+        "name": "Real-time Chat & Messaging (WhatsApp/Slack)",
+        "description": "Low-latency bidirectional messaging with WebSocket gateways, Pub/Sub routing, and persistent history.",
+        "mode": "pro",
+        "keywords": ["chat", "whatsapp", "slack", "messaging", "realtime", "websocket", "messenger", "telegram", "discord"],
+        "tech_indicators": {
+            "frameworks": ["go", "node.js", "elixir", "rust"],
+            "caches": ["redis"],
+            "databases": ["cassandra", "scylladb", "postgresql"],
+            "queues": ["kafka", "nats", "pulsar"],
+        },
+        "pattern": "microservices",
+        "components_template": [
+            {"type": "api", "label": "Chat Mobile & Web", "tech": "React Native & WebSockets", "capacity": 25000},
+            {"type": "gateway", "label": "WebSocket Gateway", "tech": "Go / Gorilla WS", "capacity": 15000},
+            {"type": "cache", "label": "Redis Pub/Sub", "tech": "Redis Cluster", "capacity": 30000},
+            {"type": "database", "label": "Message History Store", "tech": "Cassandra / ScyllaDB", "capacity": 8000},
+        ],
+    },
+    "ride-hailing": {
+        "id": "ride-hailing",
+        "name": "Ride-Hailing Platform (Uber/Lyft)",
+        "description": "Real-time ride matching with geospatial indexing, trip orchestration, and surge pricing.",
+        "mode": "pro",
+        "keywords": ["uber", "lyft", "ride", "hailing", "taxi", "driver", "passenger", "matching", "geospatial", "surge"],
+        "tech_indicators": {
+            "frameworks": ["go", "java", "node.js", "python"],
+            "databases": ["postgresql", "cassandra", "redis"],
+            "caches": ["redis"],
+            "queues": ["kafka", "pulsar"],
+        },
+        "pattern": "microservices",
+        "components_template": [
+            {"type": "api", "label": "Rider & Driver Apps", "tech": "React Native / Swift / Kotlin", "capacity": 30000},
+            {"type": "gateway", "label": "API Gateway", "tech": "Envoy / Kong", "capacity": 20000},
+            {"type": "service", "label": "Trip Matching Service", "tech": "Go / Redis Geospatial", "capacity": 5000},
+            {"type": "service", "label": "Driver Location Service", "tech": "Redis / WebSocket", "capacity": 15000},
+            {"type": "service", "label": "Pricing & Surge Engine", "tech": "Python / ML", "capacity": 3000},
+            {"type": "queue", "label": "Trip Event Queue", "tech": "Apache Kafka", "capacity": 50000},
+            {"type": "database", "label": "Trip History DB", "tech": "PostgreSQL / Cassandra", "capacity": 10000},
+            {"type": "database", "label": "Geospatial Index", "tech": "Redis / PostGIS", "capacity": 20000},
+        ],
+    },
+    "food-delivery": {
+        "id": "food-delivery",
+        "name": "Food Delivery Platform (DoorDash/Swiggy/Zomato)",
+        "description": "Three-sided marketplace with restaurant onboarding, order orchestration, and driver dispatch.",
+        "mode": "pro",
+        "keywords": ["food", "delivery", "doordash", "swiggy", "zomato", "restaurant", "order", "driver", "dispatch", "marketplace"],
+        "tech_indicators": {
+            "frameworks": ["go", "node.js", "python", "java"],
+            "databases": ["postgresql", "cassandra", "mongodb"],
+            "caches": ["redis"],
+            "queues": ["kafka", "rabbitmq"],
+        },
+        "pattern": "microservices",
+        "components_template": [
+            {"type": "api", "label": "Customer / Restaurant / Driver Apps", "tech": "React Native / Flutter", "capacity": 40000},
+            {"type": "gateway", "label": "API Gateway", "tech": "Kong / Envoy", "capacity": 25000},
+            {"type": "service", "label": "Order Service", "tech": "Go / gRPC", "capacity": 5000},
+            {"type": "service", "label": "Restaurant Service", "tech": "Node.js / Express", "capacity": 4000},
+            {"type": "service", "label": "Dispatch Service", "tech": "Python / Geospatial", "capacity": 3000},
+            {"type": "queue", "label": "Order Event Queue", "tech": "Kafka", "capacity": 30000},
+            {"type": "cache", "label": "Redis Cache", "tech": "Redis Cluster", "capacity": 30000},
+            {"type": "database", "label": "Order DB", "tech": "PostgreSQL", "capacity": 5000},
+            {"type": "database", "label": "Restaurant Catalog", "tech": "MongoDB / Elasticsearch", "capacity": 8000},
+        ],
+    },
+    "social-media": {
+        "id": "social-media",
+        "name": "Social Media Platform (Twitter/Instagram)",
+        "description": "High-fanout feed generation, media storage, and real-time notifications at massive scale.",
+        "mode": "pro",
+        "keywords": ["twitter", "instagram", "facebook", "social", "feed", "timeline", "tweet", "post", "follow", "media"],
+        "tech_indicators": {
+            "frameworks": ["go", "java", "scala", "python"],
+            "databases": ["cassandra", "scylladb", "postgresql", "redis"],
+            "caches": ["redis", "memcached"],
+            "queues": ["kafka", "pulsar"],
+            "storage": ["s3", "gcs"],
+        },
+        "pattern": "microservices",
+        "components_template": [
+            {"type": "api", "label": "Client Apps", "tech": "iOS / Android / Web", "capacity": 100000},
+            {"type": "gateway", "label": "Edge Load Balancer", "tech": "Envoy / HAProxy", "capacity": 50000},
+            {"type": "service", "label": "Feed Generation Service", "tech": "Go / Redis", "capacity": 10000},
+            {"type": "service", "label": "Timeline Service", "tech": "Scala / Flink", "capacity": 5000},
+            {"type": "service", "label": "Media Service", "tech": "Python / FFmpeg", "capacity": 2000},
+            {"type": "queue", "label": "Fanout Queue", "tech": "Kafka / Pulsar", "capacity": 100000},
+            {"type": "cache", "label": "Feed Cache", "tech": "Redis Cluster", "capacity": 50000},
+            {"type": "database", "label": "User Graph DB", "tech": "Cassandra / ScyllaDB", "capacity": 20000},
+            {"type": "storage", "label": "Media Storage", "tech": "S3 / GCS", "capacity": 20000},
+        ],
+    },
+    "fintech-payments": {
+        "id": "fintech-payments",
+        "name": "FinTech Payments Platform (Stripe/Razorpay)",
+        "description": "Secure payment processing with fraud detection, ledger accounting, and multi-currency support.",
+        "mode": "pro",
+        "keywords": ["payment", "stripe", "razorpay", "fintech", "transaction", "ledger", "fraud", "wallet", "banking"],
+        "tech_indicators": {
+            "frameworks": ["go", "java", "rust", "python"],
+            "databases": ["postgresql", "cockroachdb", "mysql"],
+            "caches": ["redis"],
+            "queues": ["kafka", "nats"],
+        },
+        "pattern": "microservices",
+        "components_template": [
+            {"type": "api", "label": "Merchant / Customer Apps", "tech": "React / SDKs", "capacity": 20000},
+            {"type": "gateway", "label": "Payment Gateway", "tech": "Envoy / Custom", "capacity": 15000},
+            {"type": "service", "label": "Payment Processing", "tech": "Go / Rust", "capacity": 5000},
+            {"type": "service", "label": "Fraud Detection", "tech": "Python / ML", "capacity": 2000},
+            {"type": "service", "label": "Ledger Service", "tech": "Java / CockroachDB", "capacity": 3000},
+            {"type": "queue", "label": "Transaction Queue", "tech": "Kafka / NATS", "capacity": 20000},
+            {"type": "database", "label": "Transaction Ledger", "tech": "CockroachDB / PostgreSQL", "capacity": 5000},
+            {"type": "cache", "label": "Risk Cache", "tech": "Redis", "capacity": 15000},
+        ],
+    },
+}
+
+
+async def match_prompt_to_preset(prompt: str, mode: str = "pro") -> Dict[str, Any]:
+    """
+    Match a user prompt to the closest preset architecture.
+    """
+    prompt_lower = prompt.lower()
+    
+    best_match = None
+    best_score = 0
+    all_scores = {}
+    
+    for preset_id, preset in PRESET_DEFINITIONS.items():
+        # Skip if mode doesn't match (unless no mode-specific preset)
+        if preset.get("mode") != mode and mode == "learner":
+            # Allow pro presets in learner mode if no learner match
+            pass
+        elif preset.get("mode") == "learner" and mode == "pro":
+            continue  # Skip learner-only presets in pro mode
+            
+        score = 0
+        matched_keywords = []
+        
+        # Keyword matching
+        for keyword in preset["keywords"]:
+            if keyword in prompt_lower:
+                score += 10
+                matched_keywords.append(keyword)
+        
+        # Partial keyword matching (substring)
+        for keyword in preset["keywords"]:
+            if keyword not in matched_keywords:
+                for word in prompt_lower.split():
+                    if word in keyword or keyword in word:
+                        score += 3
+                        matched_keywords.append(keyword)
+                        break
+        
+        all_scores[preset_id] = {"score": score, "matched_keywords": matched_keywords}
+        
+        if score > best_score:
+            best_score = score
+            best_match = preset_id
+    
+    # If no good match, try to infer from tech mentions
+    if best_score < 10:
+        tech_hints = {
+            "kafka": "ecommerce-microservices",
+            "redis": "ecommerce-microservices",
+            "microservice": "ecommerce-microservices",
+            "websocket": "chat-messaging",
+            "geospatial": "ride-hailing",
+            "surge": "ride-hailing",
+            "dispatch": "food-delivery",
+            "restaurant": "food-delivery",
+            "feed": "social-media",
+            "timeline": "social-media",
+            "fraud": "fintech-payments",
+            "ledger": "fintech-payments",
+        }
+        for hint, preset_id in tech_hints.items():
+            if hint in prompt_lower:
+                best_match = preset_id
+                best_score = 8
+                break
+    
+    confidence = min(best_score / 30.0, 1.0) if best_match else 0.0
+    
+    return {
+        "matched_preset_id": best_match,
+        "matched_preset_name": PRESET_DEFINITIONS[best_match]["name"] if best_match else None,
+        "matched_preset_mode": PRESET_DEFINITIONS[best_match]["mode"] if best_match else mode,
+        "confidence": confidence,
+        "all_scores": all_scores,
+        "reasoning": f"Best match: {best_match} with score {best_score}" if best_match else "No strong preset match, will generate custom architecture",
+    }
+
+
+async def generate_architecture_from_prompt(prompt: str, mode: str = "pro", matched_preset: Dict = None) -> Dict[str, Any]:
+    """
+    Generate a complete architecture from a prompt, using a matched preset as base if available.
+    """
+    # If we have a matched preset, customize it
+    if matched_preset and matched_preset.get("matched_preset_id"):
+        preset = PRESET_DEFINITIONS[matched_preset["matched_preset_id"]]
+        template = preset["components_template"]
+        
+        # Customize based on prompt specifics
+        components = []
+        for i, tmpl in enumerate(template):
+            comp = {
+                "name": tmpl["label"],
+                "type": tmpl["type"],
+                "tech": tmpl["tech"],
+                "description": f"{tmpl['label']} for {prompt[:50]}",
+                "config": {
+                    "latency": 20,
+                    "rps": 1000,
+                    "capacity": tmpl.get("capacity", 5000),
+                    "failureRate": 0.1,
+                    "replication": "Auto-scaling",
+                },
+                "explanation": f"Core {tmpl['type']} component for the {preset['name'].lower()} architecture.",
+            }
+            components.append(comp)
+        
+        # Generate data flows based on architecture pattern
+        data_flows = []
+        if preset["pattern"] == "microservices":
+            # Standard microservices flow
+            data_flows = [
+                {"from": "Client Apps", "to": "API Gateway", "protocol": "HTTPS", "traffic_estimate_rps": 5000},
+                {"from": "API Gateway", "to": "Order Service", "protocol": "gRPC", "traffic_estimate_rps": 3000},
+                {"from": "API Gateway", "to": "User & Catalog Service", "protocol": "gRPC", "traffic_estimate_rps": 2000},
+                {"from": "Order Service", "to": "Kafka Event Bus", "protocol": "Kafka", "traffic_estimate_rps": 3000},
+                {"from": "Order Service", "to": "Postgres Primary", "protocol": "SQL", "traffic_estimate_rps": 2000},
+                {"from": "User & Catalog Service", "to": "Redis Cluster", "protocol": "TCP", "traffic_estimate_rps": 2000},
+                {"from": "Kafka Event Bus", "to": "Notification Worker", "protocol": "Kafka", "traffic_estimate_rps": 1000},
+            ]
+        elif preset["pattern"] == "monolith":
+            data_flows = [
+                {"from": "Web Browser / Mobile", "to": "Load Balancer", "protocol": "HTTPS", "traffic_estimate_rps": 2000},
+                {"from": "Load Balancer", "to": "URL Shortener App", "protocol": "HTTP/REST", "traffic_estimate_rps": 2000},
+                {"from": "URL Shortener App", "to": "Redis Cache", "protocol": "TCP", "traffic_estimate_rps": 1500},
+                {"from": "URL Shortener App", "to": "Persistent Database", "protocol": "SQL", "traffic_estimate_rps": 500},
+            ]
+        
+        return {
+            "summary": f"Architecture for: {prompt}. Based on {preset['name']} pattern.",
+            "architecture_pattern": preset["pattern"],
+            "pattern_confidence": matched_preset.get("confidence", 0.8),
+            "components": components,
+            "data_flows": data_flows,
+            "infrastructure": {
+                "cloud": "aws",
+                "containerization": "docker",
+                "orchestration": "kubernetes",
+                "ci_cd": "github-actions",
+            },
+            "scalability_concerns": [
+                "Database write throughput at peak",
+                "Cache invalidation strategy",
+                "Cross-service latency in microservices",
+            ],
+            "recommendations": [
+                "Implement circuit breakers for all service calls",
+                "Use read replicas for database scaling",
+                "Add distributed tracing (Jaeger/Zipkin)",
+                "Configure auto-scaling based on CPU and custom metrics",
+            ],
+            "confidence": matched_preset.get("confidence", 0.8),
+            "preset_based": True,
+            "preset_id": matched_preset["matched_preset_id"],
+        }
+    
+    # No preset match - generate custom architecture via LLM prompt
+    # This would be handled by the LLM call in the agent's execute method
+    return {
+        "summary": f"Custom architecture for: {prompt}",
+        "architecture_pattern": "custom",
+        "pattern_confidence": 0.5,
+        "components": [],
+        "data_flows": [],
+        "infrastructure": {},
+        "scalability_concerns": [],
+        "recommendations": [],
+        "confidence": 0.5,
+        "preset_based": False,
     }

@@ -104,24 +104,15 @@ const CanvasInner: React.FC<ArchitectureCanvasProps> = ({
           gap={20}
           size={1.5}
           color="#CBD5E1"
-          className="bg-[#F8FAFC]"
+          className="bg-[#F8FAFC] dark:bg-[#0f172a]"
         />
         <Controls
           className="!bg-white !border-slate-200 !shadow-sm !rounded-xl overflow-hidden [&>button]:!border-slate-100 hover:[&>button]:!bg-slate-50"
           showInteractive={false}
         />
         <MiniMap
-          nodeColor={(node: any) => {
-            const cat = node.data?.category;
-            if (cat === 'database') return '#10B981';
-            if (cat === 'queue') return '#8B5CF6';
-            if (cat === 'cache') return '#F59E0B';
-            if (cat === 'gateway') return '#F97316';
-            if (cat === 'api') return '#06B6D4';
-            return '#3B82F6';
-          }}
-          maskColor="rgba(241, 245, 249, 0.7)"
-          className="!bg-white/90 !border !border-slate-200 !rounded-xl !shadow-sm overflow-hidden hidden sm:block"
+          maskColor="rgba(15, 23, 42, 0.8)"
+          className="!bg-slate-50 dark:!bg-slate-900/90 !border !border-slate-200 dark:!border-slate-700 !rounded-xl !shadow-sm overflow-hidden hidden sm:block"
         />
       </ReactFlow>
     </div>

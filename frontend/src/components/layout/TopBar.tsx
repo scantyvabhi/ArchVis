@@ -13,9 +13,12 @@ import {
   ChevronDown,
   Cpu,
   FileCode,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import { AppMode } from '../../types/architecture';
 import { PRESET_ARCHITECTURES } from '../../constants/presets';
+import { useTheme } from '../../contexts/ThemeContext';
 
 interface TopBarProps {
   mode: AppMode;
@@ -46,6 +49,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 }) => {
   const [showPresetsMenu, setShowPresetsMenu] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const { theme, toggleTheme } = useTheme();
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -239,6 +243,15 @@ export const TopBar: React.FC<TopBarProps> = ({
           className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
         >
           <Trash2 className="w-4 h-4" />
+        </button>
+
+        {/* Theme Toggle */}
+        <button
+          onClick={toggleTheme}
+          title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+          className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors"
+        >
+          {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
         </button>
 
         {/* Backend health status indicator */}

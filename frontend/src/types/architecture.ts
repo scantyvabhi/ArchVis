@@ -86,4 +86,34 @@ export interface ChatMessage {
     type: 'highlight_node' | 'load_preset' | 'apply_architecture';
     payload: any;
   };
+  // Agent thinking steps
+  thinking?: AgentThinkingStep[];
+}
+
+export interface AgentThinkingStep {
+  agent: string;
+  agentName: string;
+  status: 'starting' | 'running' | 'completed' | 'failed';
+  timestamp: string;
+  reasoning?: string;
+  toolCalls?: Array<{
+    tool: string;
+    args?: any;
+    result: 'success' | 'failed';
+    durationMs?: number;
+  }>;
+  modelUsed?: string;
+  modelFallback?: boolean;
+  confidence?: number;
+  outputPreview?: string;
+}
+
+export interface ConsensusLogEntry {
+  round: number;
+  agent: string;
+  status: string;
+  confidence: number;
+  reasoning?: string;
+  consensusScore?: number;
+  consensusReached?: boolean;
 }

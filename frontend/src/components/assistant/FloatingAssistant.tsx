@@ -18,7 +18,9 @@ import {
   GitBranch,
   Layers,
 } from 'lucide-react';
-import { AppMode, ChatMessage, ArchitectureNode, ArchitectureEdge } from '../../types/architecture';
+import { AppMode, ChatMessage, ArchitectureNode, ArchitectureEdge, AgentThinkingStep } from '../../types/architecture';
+import { AgentThinkingDisplay } from './AgentThinkingDisplay';
+import { MarkdownRenderer } from './MarkdownRenderer';
 
 interface FloatingAssistantProps {
   mode: AppMode;
@@ -30,6 +32,7 @@ interface FloatingAssistantProps {
   messages: ChatMessage[];
   isLoading: boolean;
   nodesCount: number;
+  currentAgentThinking?: AgentThinkingStep;
 }
 
 export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
@@ -37,10 +40,12 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
   onToggleMode,
   onGenerateArchitecture,
   onSendMessage,
+  onOrchestrateAgents,
   onOpenRepoIngestion,
   messages,
   isLoading,
   nodesCount,
+  currentAgentThinking,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [inputText, setInputText] = useState('');
@@ -63,31 +68,41 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
     const query = inputText.trim();
     setInputText('');
 
-    // If query starts with "generate:" or "design" or canvas is empty, generate architecture
+    // Check for GitHub repo URL
+    const repoUrlMatch = query.match(/https?:\/\/github\.com\/[\w-]+\/[\w-]+/);
+    const repoUrl = repoUrlMatch ? repoUrlMatch[0] : undefined;
+
+    // Check if this is an architecture design request (design, generate, build, create, or specific system names)
     const isDesignRequest =
       nodesCount === 0 ||
       query.toLowerCase().startsWith('design') ||
       query.toLowerCase().startsWith('generate') ||
       query.toLowerCase().startsWith('build') ||
-      query.toLowerCase().startsWith('create');
+      query.toLowerCase().startsWith('create') ||
+      // Common system names that imply architecture design
+      /\b(flipkart|amazon|uber|netflix|youtube|whatsapp|slack|twitter|instagram|stripe|doordash|swiggy|zomato|spotify|airbnb|booking|expedia)\b/i.test(query);
 
-    // Check for multi-agent trigger keywords
+    // Check for multi-agent trigger keywords (repo analysis, full orchestration)
     const isMultiAgentRequest =
       query.toLowerCase().startsWith('analyze') ||
       query.toLowerCase().startsWith('orchestrate') ||
       query.toLowerCase().startsWith('multi-agent') ||
       query.toLowerCase().startsWith('full analysis') ||
-      query.toLowerCase().includes('github.com/') ||
+      repoUrl ||
       query.toLowerCase().includes('repo') && (query.toLowerCase().includes('analyze') || query.toLowerCase().includes('understand'));
 
-    if (isDesignRequest && !isOpen) {
-      await onGenerateArchitecture(query);
-    } else if (isMultiAgentRequest) {
-      // Extract repo URL if present
-      const repoUrlMatch = query.match(/https?:\/\/github\.com\/[\w-]+\/[\w-]+/);
-      const repoUrl = repoUrlMatch ? repoUrlMatch[0] : undefined;
+    if (repoUrl) {
+      // GitHub repo - use full orchestration with repo
       if (!isOpen) setIsOpen(true);
       await onOrchestrateAgents(query, repoUrl);
+    } else if (isDesignRequest) {
+      // Architecture design request - use multi-agent orchestration for better results
+      if (!isOpen) setIsOpen(true);
+      await onOrchestrateAgents(query);
+    } else if (isMultiAgentRequest) {
+      // Other multi-agent requests
+      if (!isOpen) setIsOpen(true);
+      await onOrchestrateAgents(query);
     } else {
       // Normal chat question - use multi-agent chat
       if (!isOpen) setIsOpen(true);
@@ -103,11 +118,13 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
     'Design Uber ride-matching with Redis Geospatial',
   ];
 
-  const multiAgentPrompts = [
-    'Analyze this GitHub repo: https://github.com/fastapi/fastapi',
-    'Full multi-agent analysis of my diagram',
-    'Orchestrate agents to design a scalable system',
-    'Compare my diagram with repo architecture',
+  const designPrompts = [
+    'Design Flipkart e-commerce architecture',
+    'Design Uber ride-hailing system',
+    'Design Netflix video streaming platform',
+    'Design WhatsApp real-time messaging',
+    'Design Twitter social media feed',
+    'Design Stripe payment platform',
   ];
 
   return (
@@ -167,8 +184,25 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
                   ))}
                 </div>
                 <div className="flex flex-wrap gap-1.5 justify-center pt-1 border-t border-slate-100 mt-2">
+                  <span className="text-[9px] text-slate-400 px-1 self-center">Design System:</span>
+                  {designPrompts.slice(0, 3).map((prompt, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        setInputText(prompt);
+                      }}
+                      className="text-[10px] bg-green-50 hover:bg-green-100 hover:text-green-700 text-green-600 px-2.5 py-1 rounded-full border border-green-200/80 transition-colors"
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-1.5 justify-center pt-1 border-t border-slate-100 mt-2">
                   <span className="text-[9px] text-slate-400 px-1 self-center">Multi-Agent:</span>
-                  {multiAgentPrompts.slice(0, 2).map((prompt, idx) => (
+                  {[
+                    'Analyze GitHub repo: https://github.com/fastapi/fastapi',
+                    'Full multi-agent analysis of my diagram',
+                  ].map((prompt, idx) => (
                     <button
                       key={idx}
                       onClick={() => {
@@ -193,21 +227,35 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
                     </div>
                   )}
 
-                  <div
-                    className={`max-w-[82%] rounded-xl px-3.5 py-2.5 leading-relaxed text-xs ${
-                      msg.sender === 'user'
-                        ? 'bg-blue-600 text-white shadow-xs'
-                        : 'bg-slate-100 text-slate-800 border border-slate-200/60 shadow-xs'
-                    }`}
-                  >
-                    <div className="whitespace-pre-wrap">{msg.text}</div>
-                    <span
-                      className={`block text-[9px] mt-1 font-mono ${
-                        msg.sender === 'user' ? 'text-blue-200 text-right' : 'text-slate-400'
+                  <div className="flex flex-col max-w-[82%]">
+                    <div
+                      className={`rounded-xl px-3.5 py-2.5 leading-relaxed text-xs ${
+                        msg.sender === 'user'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-800 border border-slate-200/60 shadow-xs'
                       }`}
                     >
-                      {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
+                      {msg.sender === 'assistant' ? (
+                        <MarkdownRenderer text={msg.text} />
+                      ) : (
+                        <div className="whitespace-pre-wrap">{msg.text}</div>
+                      )}
+                      <span
+                        className={`block text-[9px] mt-1 font-mono ${
+                          msg.sender === 'user' ? 'text-blue-200 text-right' : 'text-slate-400'
+                        }`}
+                      >
+                        {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+
+                    {/* Agent Thinking Display */}
+                    {msg.thinking && msg.thinking.length > 0 && (
+                      <AgentThinkingDisplay
+                        thinkingSteps={msg.thinking}
+                        messageId={msg.id}
+                      />
+                    )}
                   </div>
 
                   {msg.sender === 'user' && (
@@ -219,12 +267,24 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
               ))
             )}
             {isLoading && (
-              <div className="flex gap-2.5 items-center text-slate-400 text-xs">
-                <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <>
+                <div className="flex gap-2.5 items-center text-slate-400 text-xs">
+                  <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  </div>
+                  <span>Analyzing architecture with Gemini 1.5 Flash...</span>
                 </div>
-                <span>Analyzing architecture with Gemini 1.5 Flash...</span>
-              </div>
+                {currentAgentThinking && (
+                  <div className="mt-2">
+                    <div className="flex gap-2.5 items-center text-slate-400 text-xs">
+                      <div className="w-6 h-6 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+                        <Brain className="w-3.5 h-3.5 animate-spin" />
+                      </div>
+                      <span>Agent pipeline running...</span>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
             <div ref={messagesEndRef} />
           </div>

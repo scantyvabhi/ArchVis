@@ -176,7 +176,7 @@ class AgentOrchestrator:
 
         final_diagram = agent_results.get(AgentRole.DIAGRAM_BUILDER.value, AgentResult(
             agent_role=AgentRole.DIAGRAM_BUILDER, status=AgentStatus.FAILED, output={}, 
-            reasoning="", confidence=0
+            reasoning="", confidence=0, execution_time_ms=0
         )).output
 
         return OrchestrationResult(
@@ -202,10 +202,10 @@ class AgentOrchestrator:
         agent_results = {
             AgentRole.REPO_FETCHER.value: fetcher_result,
             AgentRole.ARCHITECTURE_ANALYST.value: analyst_result if not isinstance(analyst_result, Exception) else AgentResult(
-                agent_role=AgentRole.ARCHITECTURE_ANALYST, status=AgentStatus.FAILED, output={}, reasoning="", confidence=0, error=str(analyst_result)
+                agent_role=AgentRole.ARCHITECTURE_ANALYST, status=AgentStatus.FAILED, output={}, reasoning="", confidence=0, execution_time_ms=0, error=str(analyst_result)
             ),
             AgentRole.DIAGRAM_BUILDER.value: builder_result if not isinstance(builder_result, Exception) else AgentResult(
-                agent_role=AgentRole.DIAGRAM_BUILDER, status=AgentStatus.FAILED, output={}, reasoning="", confidence=0, error=str(builder_result)
+                agent_role=AgentRole.DIAGRAM_BUILDER, status=AgentStatus.FAILED, output={}, reasoning="", confidence=0, execution_time_ms=0, error=str(builder_result)
             ),
         }
 
@@ -263,7 +263,7 @@ class AgentOrchestrator:
                 context.consensus_round = round_num + 1
 
         final_diagram = agent_results.get(AgentRole.DIAGRAM_BUILDER.value, AgentResult(
-            agent_role=AgentRole.DIAGRAM_BUILDER, status=AgentStatus.FAILED, output={}, reasoning="", confidence=0
+            agent_role=AgentRole.DIAGRAM_BUILDER, status=AgentStatus.FAILED, output={}, reasoning="", confidence=0, execution_time_ms=0
         )).output
 
         return OrchestrationResult(
@@ -303,11 +303,11 @@ class AgentOrchestrator:
         discrepancies = []
 
         analyst_output = agent_results.get(AgentRole.ARCHITECTURE_ANALYST.value, AgentResult(
-            agent_role=AgentRole.ARCHITECTURE_ANALYST, status=AgentStatus.FAILED, output={}, reasoning="", confidence=0
+            agent_role=AgentRole.ARCHITECTURE_ANALYST, status=AgentStatus.FAILED, output={}, reasoning="", confidence=0, execution_time_ms=0
         )).output
 
         builder_output = agent_results.get(AgentRole.DIAGRAM_BUILDER.value, AgentResult(
-            agent_role=AgentRole.DIAGRAM_BUILDER, status=AgentStatus.FAILED, output={}, reasoning="", confidence=0
+            agent_role=AgentRole.DIAGRAM_BUILDER, status=AgentStatus.FAILED, output={}, reasoning="", confidence=0, execution_time_ms=0
         )).output
 
         # Check component count match

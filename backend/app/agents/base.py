@@ -305,14 +305,14 @@ class MultiModelClient:
         if self.config.get("nemotron_api_key"):
             self.clients["nemotron"] = {
                 "api_key": self.config["nemotron_api_key"],
-                "model": self.config.get("nemotron_model", "nvidia/nemotron-3-ultra"),
+                "model": self.config.get("nemotron_model", "nvidia/nemotron-3-ultra-550b-a55b"),
                 "endpoint": self.config.get("nemotron_endpoint", "https://integrate.api.nvidia.com/v1"),
             }
 
         if self.config.get("huggingface_api_key"):
             self.clients["huggingface"] = {
                 "api_key": self.config["huggingface_api_key"],
-                "model": self.config.get("huggingface_model", "meta-llama/Llama-3.1-70B-Instruct"),
+                "model": self.config.get("huggingface_model", "zai-org/GLM-5.3"),
                 "endpoint": "https://api-inference.huggingface.co/models",
             }
 

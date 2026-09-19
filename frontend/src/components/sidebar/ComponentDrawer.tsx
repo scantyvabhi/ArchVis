@@ -78,7 +78,7 @@ export const ComponentDrawer: React.FC<ComponentDrawerProps> = ({
 
   return (
     <aside
-      className={`fixed top-14 right-0 bottom-0 z-20 bg-white/95 backdrop-blur-md border-l border-slate-200 transition-all duration-300 flex ${
+      className={`fixed top-14 right-0 bottom-0 z-20 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-l border-slate-200 dark:border-slate-700 transition-all duration-300 flex ${
         isOpen ? 'w-80 shadow-xl' : 'w-0'
       }`}
     >
@@ -86,7 +86,7 @@ export const ComponentDrawer: React.FC<ComponentDrawerProps> = ({
       <button
         onClick={onToggle}
         title={isOpen ? 'Collapse Component Drawer' : 'Expand Component Drawer'}
-        className="absolute -left-7 top-6 bg-white border border-slate-200 text-slate-600 hover:text-slate-900 rounded-l-md p-1 shadow-sm transition-colors"
+        className="absolute -left-7 top-6 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 rounded-l-md p-1 shadow-sm transition-colors"
       >
         {isOpen ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
       </button>
@@ -95,8 +95,8 @@ export const ComponentDrawer: React.FC<ComponentDrawerProps> = ({
         <div className="w-full h-full flex flex-col p-4 overflow-hidden">
           {/* Header */}
           <div className="mb-3">
-            <h2 className="text-sm font-semibold text-slate-800 tracking-tight">Component Palette</h2>
-            <p className="text-xs text-slate-500">Drag onto canvas or click to insert</p>
+            <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-200 tracking-tight">Component Palette</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Drag onto canvas or click to insert</p>
           </div>
 
           {/* Search bar */}
@@ -107,7 +107,7 @@ export const ComponentDrawer: React.FC<ComponentDrawerProps> = ({
               placeholder="Search components, tech..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:bg-white transition-all text-slate-800 placeholder-slate-400"
+              className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:bg-white dark:focus:bg-slate-800 transition-all text-slate-800 dark:text-slate-200 placeholder-slate-400"
             />
           </div>
 
@@ -119,8 +119,8 @@ export const ComponentDrawer: React.FC<ComponentDrawerProps> = ({
                 onClick={() => setSelectedCategory(cat.id)}
                 className={`px-2.5 py-1 text-[11px] font-medium rounded-md whitespace-nowrap transition-colors ${
                   selectedCategory === cat.id
-                    ? 'bg-slate-900 text-white shadow-xs'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
+                    ? 'bg-slate-900 dark:bg-slate-200 text-white dark:text-slate-900 shadow-xs'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200/70 dark:hover:bg-slate-700/70'
                 }`}
               >
                 {cat.label}
@@ -131,7 +131,7 @@ export const ComponentDrawer: React.FC<ComponentDrawerProps> = ({
           {/* Component List */}
           <div className="flex-1 overflow-y-auto space-y-2 pr-1 scrollbar-thin">
             {filteredComponents.length === 0 ? (
-              <div className="text-center py-8 text-xs text-slate-400">
+              <div className="text-center py-8 text-xs text-slate-400 dark:text-slate-500">
                 No matching components found
               </div>
             ) : (
@@ -143,22 +143,22 @@ export const ComponentDrawer: React.FC<ComponentDrawerProps> = ({
                     draggable
                     onDragStart={(e) => handleDragStart(e, template)}
                     onClick={() => onAddComponent(template)}
-                    className="group border border-slate-200 hover:border-blue-400 bg-white hover:bg-blue-50/20 p-2.5 rounded-lg cursor-grab active:cursor-grabbing transition-all flex items-start justify-between gap-3 shadow-xs hover:shadow-sm"
+                    className="group border border-slate-200 dark:border-slate-700 hover:border-blue-400 bg-white dark:bg-slate-800 hover:bg-blue-50/20 dark:hover:bg-blue-900/20 p-2.5 rounded-lg cursor-grab active:cursor-grabbing transition-all flex items-start justify-between gap-3 shadow-xs hover:shadow-sm"
                   >
                     <div className="flex items-start gap-2.5 overflow-hidden">
-                      <div className="p-1.5 rounded-md bg-slate-100 group-hover:bg-blue-100 text-slate-600 group-hover:text-blue-600 transition-colors shrink-0 mt-0.5">
+                      <div className="p-1.5 rounded-md bg-slate-100 dark:bg-slate-800 group-hover:bg-blue-100 dark:group-hover:bg-blue-900/30 text-slate-600 dark:text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors shrink-0 mt-0.5">
                         <IconComponent className="w-4 h-4" />
                       </div>
                       <div className="min-w-0">
-                        <h4 className="text-xs font-semibold text-slate-800 truncate group-hover:text-blue-700">
+                        <h4 className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate group-hover:text-blue-700 dark:group-hover:text-blue-400">
                           {template.label}
                         </h4>
-                        <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-mono mt-0.5">
+                        <div className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">
                           <span className="truncate">{template.tech}</span>
                           <span>•</span>
                           <span>{template.defaultCapacity.toLocaleString()} RPS</span>
                         </div>
-                        <p className="text-[10px] text-slate-400 line-clamp-1 mt-1">
+                        <p className="text-[10px] text-slate-400 dark:text-slate-500 line-clamp-1 mt-1">
                           {template.description}
                         </p>
                       </div>
@@ -167,7 +167,7 @@ export const ComponentDrawer: React.FC<ComponentDrawerProps> = ({
                     <button
                       type="button"
                       title="Add to canvas"
-                      className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-blue-100 text-blue-600 transition-opacity shrink-0"
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-blue-100 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 transition-opacity shrink-0"
                     >
                       <Plus className="w-3.5 h-3.5" />
                     </button>

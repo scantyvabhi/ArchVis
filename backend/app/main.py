@@ -120,6 +120,47 @@ async def parse_repo(request: ParseRepoRequest):
             detail=f"Failed to parse repository: {str(e)}",
         )
 
+
+@app.post(
+    "/api/parse-repo-with-preset",
+    response_model=ParseRepoResponse,
+    tags=["Repository Ingestion"],
+    summary="Reverse-Engineer GitHub Repository with Preset Matching",
+    description="Inspects a public GitHub repository, matches it to the closest preset architecture, and returns a customized diagram.",
+)
+async def parse_repo_with_preset(request: ParseRepoRequest):
+    try:
+        orchestrator = await get_orchestrator()
+        
+        result = await orchestrator.orchestrate(
+            user_prompt=f"Analyze and create architecture diagram for GitHub repository: {request.repo_url}",
+            repo_url=request.repo_url,
+            mode=request.mode,
+        )
+
+        if not result.final_diagram:
+            raise HTTPException(status_code=500, detail=result.error or "Failed to generate architecture")
+
+        # Convert to ParseRepoResponse format
+        return ParseRepoResponse(
+            nodes=result.final_diagram.get("nodes", []),
+            edges=result.final_diagram.get("edges", []),
+            summary=result.final_diagram.get("summary", ""),
+            repo_info=RepoInfo(
+                repo_url=request.repo_url,
+                detected_tech=result.agent_results.get("repo_fetcher", {}).output.get("detected_tech", []),
+                primary_language=result.agent_results.get("repo_fetcher", {}).output.get("primary_language"),
+            ),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to parse repository with preset: {str(e)}",
+        )
+
+
 @app.post(
     "/api/chat",
     response_model=ChatResponse,
@@ -218,9 +259,26 @@ async def orchestrate_agents(request: AgentOrchestrationRequest):
             session_id=request.session_id,
         )
 
-        # Convert agent results to summary format
+        # Convert agent results to summary format with thinking steps
         agent_summaries = {}
+        thinking_steps = []
+        
         for role, agent_result in result.agent_results.items():
+            # Build thinking step for this agent
+            thinking_step = AgentThinkingStep(
+                agent=role,
+                agent_name=role.replace('_', ' ').title(),
+                status=agent_result.status.value,
+                timestamp=result.agent_results.get(role, type('obj', (object,), {'created_at': None})) if hasattr(agent_result, 'created_at') else '',
+                reasoning=agent_result.reasoning[:500] + "..." if len(agent_result.reasoning) > 500 else agent_result.reasoning,
+                tool_calls=agent_result.tool_calls,
+                model_used=agent_result.output.get('model_used') if isinstance(agent_result.output, dict) else None,
+                model_fallback=False,  # Could be enhanced to detect fallback
+                confidence=agent_result.confidence,
+                output_preview=json.dumps(agent_result.output, default=str)[:1000] if agent_result.output else None,
+            )
+            thinking_steps.append(thinking_step)
+            
             agent_summaries[role] = AgentResultSummary(
                 agent=role,
                 status=agent_result.status.value,
@@ -228,6 +286,9 @@ async def orchestrate_agents(request: AgentOrchestrationRequest):
                 reasoning=agent_result.reasoning,
                 execution_time_ms=agent_result.execution_time_ms,
                 error=agent_result.error,
+                tool_calls=agent_result.tool_calls,
+                model_used=agent_result.output.get('model_used') if isinstance(agent_result.output, dict) else None,
+                output_preview=json.dumps(agent_result.output, default=str)[:1000] if agent_result.output else None,
             )
 
         consensus_log = [
@@ -242,6 +303,7 @@ async def orchestrate_agents(request: AgentOrchestrationRequest):
             consensus_log=consensus_log,
             total_execution_time_ms=result.total_execution_time_ms,
             error=result.error,
+            thinking_steps=thinking_steps,
         )
     except Exception as e:
         raise HTTPException(

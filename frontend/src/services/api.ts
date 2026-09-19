@@ -47,6 +47,33 @@ export interface AgentResultSummary {
   reasoning: string;
   execution_time_ms: number;
   error?: string;
+  tool_calls?: Array<{
+    tool: string;
+    args?: any;
+    result: 'success' | 'failed';
+    durationMs?: number;
+  }>;
+  model_used?: string;
+  model_fallback?: boolean;
+  output_preview?: string;
+}
+
+export interface AgentThinkingStep {
+  agent: string;
+  agent_name: string;
+  status: string;
+  timestamp: string;
+  reasoning?: string;
+  tool_calls?: Array<{
+    tool: string;
+    args?: any;
+    result: 'success' | 'failed';
+    durationMs?: number;
+  }>;
+  model_used?: string;
+  model_fallback?: boolean;
+  confidence?: number;
+  output_preview?: string;
 }
 
 export interface ConsensusLogEntry {
@@ -88,6 +115,7 @@ export interface AgentOrchestrationResponse {
   consensus_log: ConsensusLogEntry[];
   total_execution_time_ms: number;
   error?: string;
+  thinking_steps?: AgentThinkingStep[];
 }
 
 export interface AvailableModelsResponse {
@@ -119,6 +147,24 @@ export async function parseRepo(
   mode: AppMode = 'pro'
 ): Promise<ParseRepoResponse> {
   const response = await fetch(`${API_BASE_URL}/parse-repo`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repo_url: repoUrl, mode }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'Network error' }));
+    throw new Error(errorData.detail || `Server error: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function parseRepoWithPreset(
+  repoUrl: string,
+  mode: AppMode = 'pro'
+): Promise<ParseRepoResponse> {
+  const response = await fetch(`${API_BASE_URL}/parse-repo-with-preset`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ repo_url: repoUrl, mode }),

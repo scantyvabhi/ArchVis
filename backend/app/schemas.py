@@ -108,6 +108,22 @@ class AgentResultSummary(BaseModel):
     reasoning: str
     execution_time_ms: int
     error: Optional[str] = None
+    tool_calls: Optional[List[Dict[str, Any]]] = None
+    model_used: Optional[str] = None
+    model_fallback: Optional[bool] = None
+    output_preview: Optional[str] = None
+
+class AgentThinkingStep(BaseModel):
+    agent: str
+    agent_name: str
+    status: str
+    timestamp: str
+    reasoning: Optional[str] = None
+    tool_calls: Optional[List[Dict[str, Any]]] = None
+    model_used: Optional[str] = None
+    model_fallback: Optional[bool] = None
+    confidence: Optional[float] = None
+    output_preview: Optional[str] = None
 
 class ConsensusLogEntry(BaseModel):
     round: int
@@ -126,6 +142,7 @@ class AgentOrchestrationResponse(BaseModel):
     consensus_log: List[ConsensusLogEntry] = Field(default_factory=list)
     total_execution_time_ms: int
     error: Optional[str] = None
+    thinking_steps: Optional[List[AgentThinkingStep]] = None
 
 class DiagramSpecResponse(BaseModel):
     nodes: List[ArchitectureNode]
