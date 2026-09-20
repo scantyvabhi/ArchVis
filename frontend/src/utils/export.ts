@@ -2,106 +2,290 @@ import { toPng, toSvg } from 'html-to-image';
 import { ArchitectureNode, ArchitectureEdge } from '../types/architecture';
 
 function getThemeBackground(): string {
-  // Check if dark mode is active
   if (typeof document !== 'undefined' && document.documentElement.classList.contains('dark')) {
-    return '#0f172a'; // dark mode background
+    return '#0f172a';
   }
-  return '#F8FAFC'; // light mode background
+  return '#F8FAFC';
 }
 
-export async function exportCanvasToPng(element: HTMLElement, filename = 'archvis-system-design.png'): Promise<void> {
-  try {
-    // Clone the element to avoid modifying the original
-    const clone = element.cloneNode(true) as HTMLElement;
-    
-    // Apply theme-aware styles to the clone
-    const isDark = document.documentElement.classList.contains('dark');
-    
-    // Temporarily add the clone to body for rendering
-    document.body.appendChild(clone);
-    clone.style.position = 'absolute';
-    clone.style.left = '-9999px';
-    clone.style.top = '0';
-    clone.style.backgroundColor = getThemeBackground();
-    
-    // Apply dark/light mode classes to the clone
-    if (isDark) {
-      clone.classList.add('dark');
-    } else {
-      clone.classList.remove('dark');
-    }
-    
-    try {
-      const dataUrl = await toPng(clone, {
-        backgroundColor: getThemeBackground(),
-        quality: 0.98,
-        pixelRatio: 3, // High DPI (300 DPI equivalent)
-        filter: (node) => {
-          const exclusionClasses = ['react-flow__panel', 'no-export'];
-          if (node instanceof HTMLElement) {
-            return !exclusionClasses.some((cls) => node.classList.contains(cls));
-          }
-          return true;
-        },
-      });
+function getNodeColor(category: string): string {
+  const colors: Record<string, string> = {
+    api: '#3B82F6',
+    gateway: '#8B5CF6',
+    service: '#10B981',
+    cache: '#F59E0B',
+    database: '#EF4444',
+    queue: '#EC4899',
+    storage: '#6B7280',
+  };
+  return colors[category] || '#6B7280';
+}
+
+function getCategoryIcon(category: string): string {
+  const icons: Record<string, string> = {
+    api: '🌐',
+    gateway: '🛡️',
+    service: '⚙️',
+    cache: '⚡',
+    database: '🗄️',
+    queue: '📬',
+    storage: '💾',
+  };
+  return icons[category] || '⚙️';
+}
+
+function drawNode(ctx: CanvasRenderingContext2D, node: any, scale: number, panX: number, panY: number) {
+  const x = (node.position.x * scale) + panX;
+  const y = (node.position.y * scale) + panY;
+  const width = Math.max(180, Math.min(220, (node.width || 180) * scale));
+  const height = Math.max(80, Math.min(120, (node.height || 80) * scale));
+  const radius = 12 * scale;
+  const color = getNodeColor(node.data?.category || 'service');
   
-      const link = document.createElement('a');
-      link.download = filename;
-      link.href = dataUrl;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } finally {
-      // Clean up
-      document.body.removeChild(clone);
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2 * scale;
+  ctx.beginPath();
+  ctx.roundRect(x, y, width, height, radius);
+  ctx.fill();
+  ctx.stroke();
+  
+  const badgeHeight = 24 * scale;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.roundRect(x, y, width, badgeHeight, radius);
+  ctx.fill();
+  
+  const icon = getCategoryIcon(node.data?.category || 'service');
+  ctx.font = `${14 * scale}px Arial`;
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.fillText(icon, x + width / 2, y + badgeHeight / 2 + 5 * scale);
+  
+  ctx.font = `bold ${12 * scale}px Inter, system-ui`;
+  ctx.fillStyle = '#1e293b';
+  ctx.textAlign = 'center';
+  const label = node.data?.label || 'Node';
+  ctx.fillText(label, x + width / 2, y + badgeHeight + 20 * scale);
+  
+  if (node.data?.tech) {
+    ctx.font = `${10 * scale}px Inter, system-ui`;
+    ctx.fillStyle = '#64748b';
+    ctx.textAlign = 'center';
+    ctx.fillText(node.data.tech, x + width / 2, y + badgeHeight + 36 * scale);
+  }
+  
+  const status = node.data?.status || 'healthy';
+  const statusColor = status === 'healthy' ? '#10B981' : status === 'warning' ? '#F59E0B' : '#EF4444';
+  ctx.beginPath();
+  ctx.arc(x + width - 10 * scale, y + 10 * scale, 6 * scale, 0, Math.PI * 2);
+  ctx.fillStyle = statusColor;
+  ctx.fill();
+}
+
+function drawEdge(ctx: CanvasRenderingContext2D, edge: any, nodes: any[], scale: number, panX: number, panY: number) {
+  const sourceNode = nodes.find(n => n.id === edge.source);
+  const targetNode = nodes.find(n => n.id === edge.target);
+  if (!sourceNode || !targetNode) return;
+  
+  const sx = (sourceNode.position.x * scale) + panX + (sourceNode.width || 180) * scale / 2;
+  const sy = (sourceNode.position.y * scale) + panY + (sourceNode.height || 80) * scale / 2;
+  const tx = (targetNode.position.x * scale) + panX + (targetNode.width || 180) * scale / 2;
+  const ty = (targetNode.position.y * scale) + panY + (targetNode.height || 80) * scale / 2;
+  
+  ctx.beginPath();
+  ctx.moveTo(sx, sy);
+  const cx = (sx + tx) / 2;
+  const cy = (sy + ty) / 2;
+  ctx.quadraticCurveTo(cx, cy - 50, tx, ty);
+  ctx.strokeStyle = '#94a3b8';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  
+  const angle = Math.atan2(ty - cy, tx - cx);
+  const arrowSize = 10;
+  ctx.beginPath();
+  ctx.moveTo(tx, ty);
+  ctx.lineTo(tx - arrowSize * Math.cos(angle - Math.PI / 6), ty - arrowSize * Math.sin(angle - Math.PI / 6));
+  ctx.lineTo(tx - arrowSize * Math.cos(angle + Math.PI / 6), ty - arrowSize * Math.sin(angle + Math.PI / 6));
+  ctx.closePath();
+  ctx.fillStyle = '#94a3b8';
+  ctx.fill();
+  
+  if (edge.data?.protocol) {
+    ctx.font = '10px Inter, system-ui';
+    ctx.fillStyle = '#64748b';
+    ctx.textAlign = 'center';
+    ctx.fillText(edge.data.protocol, cx, cy - 60);
+  }
+}
+
+export async function exportCanvasToPng(
+  nodes: any[], 
+  edges: any[], 
+  viewport: { x: number; y: number; zoom: number },
+  filename = 'archvis-system-design.png'
+): Promise<void> {
+  try {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d')!;
+    
+    const scale = 2;
+    const padding = 100;
+    
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    nodes.forEach(node => {
+      const x = node.position?.x ?? 0;
+      const y = node.position?.y ?? 0;
+      const w = node.width || 180;
+      const h = node.height || 80;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x + w);
+      maxY = Math.max(maxY, y + h);
+    });
+    
+    // Handle case where no nodes or all at same position
+    if (maxX === -Infinity) {
+      maxX = 100;
+      maxY = 100;
+      minX = 0;
+      minY = 0;
     }
+    
+    const width = (maxX - minX + padding * 2);
+    const height = (maxY - minY + padding * 2);
+    
+    canvas.width = width * 2;
+    canvas.height = height * 2;
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    
+    const ctxScale = 2;
+    const panX = (-minX + padding) * ctxScale;
+    const panY = (-minY + padding) * ctxScale;
+    
+    const isDark = document.documentElement.classList.contains('dark');
+    const bgColor = document.documentElement.classList.contains('dark') ? '#0f172a' : '#F8FAFC';
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = 0.5;
+    const gridSize = 50 * 2;
+    for (let x = 0; x < canvas.width; x += gridSize) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, canvas.height);
+      ctx.stroke();
+    }
+    for (let y = 0; y < canvas.height; y += gridSize) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(canvas.width, y);
+      ctx.stroke();
+    }
+    
+    edges.forEach(edge => drawEdge(ctx as any, edge, nodes, 2, 0, 0));
+    nodes.forEach(node => drawNode(ctx as any, node, 2, 0, 0));
+    
+    const dataUrl = canvas.toDataURL('image/png', 0.98);
+    
+    const link = document.createElement('a');
+    link.download = filename;
+    link.href = dataUrl;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    // Also trigger download via blob as fallback
+    canvas.toBlob((blob) => {
+      if (blob) {
+        const url = URL.createObjectURL(blob);
+        const link2 = document.createElement('a');
+        link2.download = filename;
+        link2.href = url;
+        document.body.appendChild(link2);
+        link2.click();
+        document.body.removeChild(link2);
+        URL.revokeObjectURL(url);
+      }
+    }, 'image/png', 0.98);
   } catch (error) {
     console.error('Error exporting canvas as PNG:', error);
     throw error;
   }
 }
 
-export async function exportCanvasToSvg(element: HTMLElement, filename = 'archvis-system-design.svg'): Promise<void> {
+export async function exportCanvasToSvg(
+  nodes: any[], 
+  edges: any[], 
+  viewport: { x: number; y: number; zoom: number },
+  filename = 'archvis-system-design.svg'
+): Promise<void> {
   try {
-    // Clone the element to avoid modifying the original
-    const clone = element.cloneNode(true) as HTMLElement;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d')!;
+    
+    const scale = 2;
+    const padding = 100;
+    
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    nodes.forEach(node => {
+      const x = node.position.x;
+      const y = node.position.y;
+      const w = node.width || 180;
+      const h = node.height || 80;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x + w);
+      maxY = Math.max(maxY, y + h);
+    });
+    
+    const width = (maxX - minX + padding * 2);
+    const height = (maxY - minY + padding * 2);
+    
+    canvas.width = width * 2;
+    canvas.height = height * 2;
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    
+    const ctxScale = 2;
+    const panX = (-minX + padding) * 2;
+    const panY = (-minY + padding) * 2;
     
     const isDark = document.documentElement.classList.contains('dark');
+    const bgColor = document.documentElement.classList.contains('dark') ? '#0f172a' : '#F8FAFC';
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    // Temporarily add the clone to body for rendering
-    document.body.appendChild(clone);
-    clone.style.position = 'absolute';
-    clone.style.left = '-9999px';
-    clone.style.top = '0';
-    clone.style.backgroundColor = getThemeBackground();
-    
-    if (isDark) {
-      clone.classList.add('dark');
-    } else {
-      clone.classList.remove('dark');
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = 0.5;
+    const gridSize = 50 * 2;
+    for (let x = 0; x < canvas.width; x += gridSize) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, canvas.height);
+      ctx.stroke();
+    }
+    for (let y = 0; y < canvas.height; y += gridSize) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(canvas.width, y);
+      ctx.stroke();
     }
     
-    try {
-      const dataUrl = await toSvg(clone, {
-        backgroundColor: getThemeBackground(),
-        filter: (node) => {
-          const exclusionClasses = ['react-flow__panel', 'no-export'];
-          if (node instanceof HTMLElement) {
-            return !exclusionClasses.some((cls) => node.classList.contains(cls));
-          }
-          return true;
-        },
-      });
-  
-      const link = document.createElement('a');
-      link.download = filename;
-      link.href = dataUrl;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } finally {
-      document.body.removeChild(clone);
-    }
+    edges.forEach(edge => drawEdge(ctx as any, edge, nodes, 2, 0, 0));
+    nodes.forEach(node => drawNode(ctx as any, node, 2, 0, 0));
+    
+    const dataUrl = canvas.toDataURL('image/svg+xml', 0.98);
+    
+    const link = document.createElement('a');
+    link.download = filename;
+    link.href = dataUrl;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   } catch (error) {
     console.error('Error exporting canvas as SVG:', error);
     throw error;

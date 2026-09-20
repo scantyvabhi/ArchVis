@@ -329,13 +329,12 @@ export function App() {
 
   // Export to High-Res PNG
   const handleExportPng = async () => {
-    const viewportElem = document.querySelector('.react-flow__viewport') as HTMLElement;
-    if (viewportElem) {
-      try {
-        await exportCanvasToPng(viewportElem, `archvis-${mode}-architecture.png`);
-      } catch (err) {
-        alert('Could not export PNG. Check console for details.');
-      }
+    try {
+      const reactFlowInstance = document.querySelector('.react-flow') as any;
+      const viewport = reactFlowInstance?.getViewport?.() || { x: 0, y: 0, zoom: 1 };
+      await exportCanvasToPng(nodes, edges, viewport, `archvis-${mode}-architecture.png`);
+    } catch (err) {
+      alert('Could not export PNG. Check console for details.');
     }
   };
 
@@ -484,6 +483,17 @@ export function App() {
         { nodes, edges },
         mode
       );
+
+      // If the chat returned a diagram, apply it to the canvas
+      if (result.diagram) {
+        const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
+          result.diagram.nodes,
+          result.diagram.edges,
+          'LR'
+        );
+        setNodes(layoutedNodes);
+        setEdges(layoutedEdges);
+      }
 
       setMessages((prev) => [
         ...prev,
@@ -677,6 +687,8 @@ export function App() {
           onSendMessage={handleSendChatMessage}
           onOrchestrateAgents={handleOrchestrateAgents}
           onOpenRepoIngestion={() => setIsRepoModalOpen(true)}
+          onExportPng={handleExportPng}
+          onExportJson={handleExportJson}
           messages={messages}
           setMessages={setMessages}
           isLoading={isAiLoading}

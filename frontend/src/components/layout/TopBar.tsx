@@ -207,7 +207,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                 className="w-full text-left px-3 py-2 hover:bg-slate-50 text-xs text-slate-700 flex items-center gap-2"
               >
                 <Download className="w-3.5 h-3.5 text-blue-600" />
-                <span>Export High-Res PNG</span>
+                <span>Export PNG</span>
               </button>
               <button
                 onClick={() => {

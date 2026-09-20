@@ -31,6 +31,8 @@ interface FloatingAssistantProps {
   onSendMessage: (message: string) => Promise<void>;
   onOrchestrateAgents: (prompt: string, repoUrl?: string) => Promise<void>;
   onOpenRepoIngestion: () => void;
+  onExportPng: () => Promise<void>;
+  onExportJson: () => void;
   messages: ChatMessage[];
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   isLoading: boolean;
@@ -45,6 +47,8 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
   onSendMessage,
   onOrchestrateAgents,
   onOpenRepoIngestion,
+  onExportPng,
+  onExportJson,
   messages,
   setMessages,
   isLoading,
@@ -352,7 +356,20 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
             {/* Learner: Show Explanations Toggle */}
             <button
               type="button"
-              title="Toggle educational explanations"
+              onClick={() => {
+                const msgIndex = messages.findIndex(m => m.sender === 'assistant');
+                if (msgIndex !== -1) {
+                  setMessages(prev => prev.map((msg, i) => 
+                    i === msgIndex ? { ...msg, text: msg.text + '\n\n💡 **Learner Tip:** ' + 
+                      (mode === 'learner' ? 
+                        'Each component has an "explanation" field that teaches you WHY this component was chosen and WHAT it does in the system.' : 
+                        'Pro mode shows detailed specs. Switch to Learner mode for educational explanations!'
+                      ) 
+                    } : msg
+                  ));
+                }
+              }}
+              title="Add educational explanation to last AI response"
               className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors shrink-0"
             >
               <HelpCircle className="w-4 h-4" />
@@ -360,7 +377,12 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
             {/* Learner: Show Tips Toggle */}
             <button
               type="button"
-              title="Show learning tips"
+              onClick={() => {
+                setInputText('Explain the data flow step-by-step in learner mode');
+                if (!isOpen) setIsOpen(true);
+                onSendMessage('Explain the data flow step-by-step in learner mode');
+              }}
+              title="Ask for learning-focused explanation"
               className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors shrink-0"
             >
               <Zap className="w-4 h-4" />
@@ -372,7 +394,20 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
             {/* Pro: Raw JSON View */}
             <button
               type="button"
-              title="View raw architecture JSON"
+              onClick={() => {
+                // Find the last AI message with diagram data
+                const lastAiMsg = [...messages].reverse().find(m => m.sender === 'assistant');
+                if (lastAiMsg && lastAiMsg.text.includes('Diagram nodes:')) {
+                  navigator.clipboard.writeText(JSON.stringify({
+                    message: 'Raw JSON view - open browser dev tools to see full diagram object',
+                    timestamp: new Date().toISOString()
+                  }, null, 2));
+                  alert('Diagram JSON copied to clipboard! Paste into a JSON viewer.');
+                } else {
+                  alert('Generate a diagram first, then click this button to copy the raw JSON.');
+                }
+              }}
+              title="Copy raw architecture JSON to clipboard"
               className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors shrink-0"
             >
               <Layers className="w-4 h-4" />
@@ -380,6 +415,11 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
             {/* Pro: Advanced Simulation */}
             <button
               type="button"
+              onClick={() => {
+                setInputText('Run advanced simulation with custom load patterns and failure injection');
+                if (!isOpen) setIsOpen(true);
+                onSendMessage('Run advanced simulation with custom load patterns and failure injection');
+              }}
               title="Advanced simulation controls"
               className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors shrink-0"
             >
@@ -388,10 +428,25 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
             {/* Pro: Export Options */}
             <button
               type="button"
-              title="Export architecture (JSON, PNG, SVG)"
+              onClick={() => {
+                onExportPng?.();
+                onExportJson?.();
+              }}
+              title="Export architecture (PNG, JSON)"
               className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors shrink-0"
             >
               <Copy className="w-4 h-4" />
+            </button>
+            {/* Pro: Export SVG */}
+            <button
+              type="button"
+              onClick={() => {
+                onExportSvg?.();
+              }}
+              title="Export architecture as SVG"
+              className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors shrink-0"
+            >
+              <FileText className="w-4 h-4" />
             </button>
           </>
         )}

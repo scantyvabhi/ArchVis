@@ -24,6 +24,18 @@ export interface ChatResponse {
   reply: string;
   suggested_action?: any;
   thinking?: AgentThinkingStep[];
+  diagram?: {
+    nodes: ArchitectureNode[];
+    edges: ArchitectureEdge[];
+    viewport: { x: number; y: number; zoom: number };
+    metadata: any;
+    summary: string;
+    recommendations: string[];
+    hld_view: any;
+    lld_view: any;
+    semantic_zoom: any;
+    analysis: any;
+  };
 }
 
 export interface SimulateResponse {

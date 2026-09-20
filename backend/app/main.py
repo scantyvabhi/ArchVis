@@ -406,7 +406,7 @@ async def agent_chat(request: ChatRequest):
                 output_preview=json.dumps(agent_result.output, default=str)[:1000] if agent_result.output else None,
             ))
 
-        return ChatResponse(reply=reply, thinking=thinking_steps)
+        return ChatResponse(reply=reply, thinking=thinking_steps, diagram=result.final_diagram)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

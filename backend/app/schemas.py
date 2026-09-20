@@ -74,6 +74,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
     suggested_action: Optional[Dict[str, Any]] = None
+    diagram: Optional[Dict[str, Any]] = None
 
 class BottleneckItem(BaseModel):
     node_id: str
