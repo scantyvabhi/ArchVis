@@ -678,6 +678,7 @@ export function App() {
           onOrchestrateAgents={handleOrchestrateAgents}
           onOpenRepoIngestion={() => setIsRepoModalOpen(true)}
           messages={messages}
+          setMessages={setMessages}
           isLoading={isAiLoading}
           nodesCount={nodes.length}
           currentAgentThinking={currentAgentThinking}

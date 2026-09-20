@@ -17,6 +17,8 @@ import {
   Brain,
   GitBranch,
   Layers,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { AppMode, ChatMessage, ArchitectureNode, ArchitectureEdge, AgentThinkingStep } from '../../types/architecture';
 import { AgentThinkingDisplay } from './AgentThinkingDisplay';
@@ -30,6 +32,7 @@ interface FloatingAssistantProps {
   onOrchestrateAgents: (prompt: string, repoUrl?: string) => Promise<void>;
   onOpenRepoIngestion: () => void;
   messages: ChatMessage[];
+  setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   isLoading: boolean;
   nodesCount: number;
   currentAgentThinking?: AgentThinkingStep;
@@ -43,6 +46,7 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
   onOrchestrateAgents,
   onOpenRepoIngestion,
   messages,
+  setMessages,
   isLoading,
   nodesCount,
   currentAgentThinking,
@@ -68,43 +72,35 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
     const query = inputText.trim();
     setInputText('');
 
-    // Check for GitHub repo URL
     const repoUrlMatch = query.match(/https?:\/\/github\.com\/[\w-]+\/[\w-]+/);
     const repoUrl = repoUrlMatch ? repoUrlMatch[0] : undefined;
 
-    // Check if this is an architecture design request (design, generate, build, create, or specific system names)
     const isDesignRequest =
       nodesCount === 0 ||
       query.toLowerCase().startsWith('design') ||
       query.toLowerCase().startsWith('generate') ||
       query.toLowerCase().startsWith('build') ||
-      query.toLowerCase().startsWith('create') ||
-      // Common system names that imply architecture design
-      /\b(flipkart|amazon|uber|netflix|youtube|whatsapp|slack|twitter|instagram|stripe|doordash|swiggy|zomato|spotify|airbnb|booking|expedia)\b/i.test(query);
+      query.toLowerCase().startsWith('create');
 
-    // Check for multi-agent trigger keywords (repo analysis, full orchestration)
     const isMultiAgentRequest =
       query.toLowerCase().startsWith('analyze') ||
       query.toLowerCase().startsWith('orchestrate') ||
       query.toLowerCase().startsWith('multi-agent') ||
       query.toLowerCase().startsWith('full analysis') ||
       repoUrl ||
-      query.toLowerCase().includes('repo') && (query.toLowerCase().includes('analyze') || query.toLowerCase().includes('understand'));
+      (query.toLowerCase().includes('repo') &&
+        (query.toLowerCase().includes('analyze') || query.toLowerCase().includes('understand')));
 
     if (repoUrl) {
-      // GitHub repo - use full orchestration with repo
       if (!isOpen) setIsOpen(true);
       await onOrchestrateAgents(query, repoUrl);
     } else if (isDesignRequest) {
-      // Architecture design request - use multi-agent orchestration for better results
       if (!isOpen) setIsOpen(true);
       await onOrchestrateAgents(query);
     } else if (isMultiAgentRequest) {
-      // Other multi-agent requests
       if (!isOpen) setIsOpen(true);
       await onOrchestrateAgents(query);
     } else {
-      // Normal chat question - use multi-agent chat
       if (!isOpen) setIsOpen(true);
       await onSendMessage(query);
     }
@@ -227,26 +223,66 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
                     </div>
                   )}
 
-                  <div className="flex flex-col max-w-[82%]">
-                    <div
-                      className={`rounded-xl px-3.5 py-2.5 leading-relaxed text-xs ${
-                        msg.sender === 'user'
-                          ? 'bg-blue-600 text-white shadow-xs'
-                          : 'bg-slate-100 text-slate-800 border border-slate-200/60 shadow-xs'
-                      }`}
-                    >
-                      {msg.sender === 'assistant' ? (
-                        <MarkdownRenderer text={msg.text} />
-                      ) : (
-                        <div className="whitespace-pre-wrap">{msg.text}</div>
-                      )}
-                      <span
-                        className={`block text-[9px] mt-1 font-mono ${
-                          msg.sender === 'user' ? 'text-blue-200 text-right' : 'text-slate-400'
+                  <div className="flex flex-col max-w-[82%] group">
+                    <div className="flex flex-col">
+                      <div
+                        className={`rounded-xl px-3.5 py-2.5 leading-relaxed text-xs ${
+                          msg.sender === 'user'
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'bg-slate-100 text-slate-800 border border-slate-200/60 shadow-xs'
                         }`}
                       >
-                        {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
+                        {msg.sender === 'assistant' ? (
+                          <MarkdownRenderer text={msg.text} />
+                        ) : (
+                          <div className="whitespace-pre-wrap">{msg.text}</div>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between mt-2 px-0.5">
+                        <span
+                          className={`text-[9px] font-mono ${
+                            msg.sender === 'user' ? 'text-blue-200' : 'text-slate-400'
+                          }`}
+                        >
+                          {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          {/* Copy button below message */}
+                          <button
+                            onClick={(e) => {
+                              navigator.clipboard.writeText(msg.text);
+                              const btn = e.currentTarget as HTMLButtonElement;
+                              btn.innerHTML = '<svg class="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>';
+                              setTimeout(() => {
+                                btn.innerHTML = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 000 4h2a2 2 0 002-2V5a2 2 0 00-2-2H8z" /></svg>';
+                              }, 1500);
+                            }}
+                            className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded transition-colors"
+                            title="Copy message"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                          {/* Revert button for user messages */}
+                          {msg.sender === 'user' && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const msgIndex = messages.findIndex(m => m.id === msg.id);
+                                if (msgIndex !== -1) {
+                                  setMessages((prev: ChatMessage[]) => prev.filter((_, i) => i !== msgIndex));
+                                  if (msgIndex < messages.length - 1 && messages[msgIndex + 1].sender === 'assistant') {
+                                    setMessages((prev: ChatMessage[]) => prev.filter((_, i) => i !== msgIndex + 1));
+                                  }
+                                }
+                              }}
+                              className="p-1 text-slate-400 hover:text-red-600 dark:hover:text-red-400 rounded transition-colors"
+                              title="Revert this message"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
 
                     {/* Agent Thinking Display */}
@@ -272,7 +308,7 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
                   <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   </div>
-                  <span>Analyzing architecture with Gemini 1.5 Flash...</span>
+                  <span>Analyzing architecture...</span>
                 </div>
                 {currentAgentThinking && (
                   <div className="mt-2">
@@ -290,7 +326,6 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
           </div>
         </div>
       )}
-
       {/* Floating Bottom Input Bar */}
       <form
         onSubmit={handleSubmit}
@@ -310,6 +345,56 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
           {mode === 'learner' ? <BookOpen className="w-3.5 h-3.5" /> : <Briefcase className="w-3.5 h-3.5" />}
           <span className="hidden sm:inline capitalize">{mode}</span>
         </button>
+
+        {/* Mode-specific feature buttons */}
+        {mode === 'learner' && (
+          <>
+            {/* Learner: Show Explanations Toggle */}
+            <button
+              type="button"
+              title="Toggle educational explanations"
+              className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors shrink-0"
+            >
+              <HelpCircle className="w-4 h-4" />
+            </button>
+            {/* Learner: Show Tips Toggle */}
+            <button
+              type="button"
+              title="Show learning tips"
+              className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors shrink-0"
+            >
+              <Zap className="w-4 h-4" />
+            </button>
+          </>
+        )}
+        {mode === 'pro' && (
+          <>
+            {/* Pro: Raw JSON View */}
+            <button
+              type="button"
+              title="View raw architecture JSON"
+              className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors shrink-0"
+            >
+              <Layers className="w-4 h-4" />
+            </button>
+            {/* Pro: Advanced Simulation */}
+            <button
+              type="button"
+              title="Advanced simulation controls"
+              className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors shrink-0"
+            >
+              <Zap className="w-4 h-4" />
+            </button>
+            {/* Pro: Export Options */}
+            <button
+              type="button"
+              title="Export architecture (JSON, PNG, SVG)"
+              className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors shrink-0"
+            >
+              <Copy className="w-4 h-4" />
+            </button>
+          </>
+        )}
 
         {/* Multi-Agent Orchestration Button */}
         <button
@@ -373,3 +458,5 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
     </div>
   );
 };
+
+export default FloatingAssistant;

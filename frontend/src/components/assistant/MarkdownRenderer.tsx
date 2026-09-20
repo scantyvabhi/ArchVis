@@ -89,8 +89,8 @@ const MarkdownText: React.FC<{ text: string }> = ({ text }) => {
         if (numMatch) {
           return (
             <div key={lineIdx} className="flex gap-2 ml-4 my-0.5">
-              <span className="text-slate-500 dark:text-slate-400 font-mono text-[10px] flex-shrink-0">{numMatch[1]}.</span>
-              <span className="flex-1">{parseInlineMarkdown(numMatch[2].trimStart())}</span>
+              <span className="text-slate-600 dark:text-slate-300 font-mono text-[10px] flex-shrink-0 font-medium">{numMatch[1]}.</span>
+              <span className="flex-1 text-slate-700 dark:text-slate-200">{parseInlineMarkdown(numMatch[2].trimStart())}</span>
             </div>
           );
         }
@@ -141,7 +141,7 @@ function parseInlineMarkdown(text: string): React.ReactNode {
     <React.Fragment>
       {boldParts.map((part, idx) => {
         if ((part.startsWith('**') && part.endsWith('**')) || (part.startsWith('__') && part.endsWith('__'))) {
-          return <strong key={idx} className="font-semibold">{part.slice(2, -2)}</strong>;
+          return <strong key={idx} className="font-semibold text-slate-700 dark:text-slate-200">{part.slice(2, -2)}</strong>;
         }
         
         // Handle italic: *text* or _text_ (but not bold markers)
@@ -152,7 +152,7 @@ function parseInlineMarkdown(text: string): React.ReactNode {
             {italicParts.map((iPart, iIdx) => {
               if ((iPart.startsWith('*') && iPart.endsWith('*') && iPart.length > 2) ||
                   (iPart.startsWith('_') && iPart.endsWith('_') && iPart.length > 2)) {
-                return <em key={iIdx} className="italic">{iPart.slice(1, -1)}</em>;
+                return <em key={iIdx} className="italic text-slate-700 dark:text-slate-200">{iPart.slice(1, -1)}</em>;
               }
               
               // Handle strikethrough: ~~text~~
@@ -164,7 +164,7 @@ function parseInlineMarkdown(text: string): React.ReactNode {
                     if (sIdx % 2 === 1) {
                       return <del key={sIdx} className="line-through text-slate-500 dark:text-slate-400">{sPart}</del>;
                     }
-                    return <span key={sIdx}>{sPart}</span>;
+                    return <span key={sIdx} className="text-slate-700 dark:text-slate-200">{sPart}</span>;
                   })}
                 </React.Fragment>
               );

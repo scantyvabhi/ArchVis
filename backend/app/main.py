@@ -21,6 +21,7 @@ from .schemas import (
     AgentResultSummary,
     ConsensusLogEntry,
     DiagramSpecResponse,
+    AgentThinkingStep,
 )
 from .ai_agent import AIAgent
 from .repo_parser import RepoParser
@@ -323,29 +324,89 @@ async def agent_chat(request: ChatRequest):
     try:
         orchestrator = await get_orchestrator()
         
-        # Use the orchestrator to process the chat message with full context
-        result = await orchestrator.orchestrate(
-            user_prompt=request.message,
-            canvas_state=request.canvas_state.model_dump(),
-            mode=request.mode,
-        )
+        # Detect if this is a modification request
+        canvas_nodes = request.canvas_state.nodes if request.canvas_state else []
+        canvas_edges = request.canvas_state.edges if request.canvas_state else []
+        has_existing_diagram = len(canvas_nodes) > 0
+        
+        # Check if user wants to modify existing diagram
+        modification_keywords = ['add', 'remove', 'change', 'update', 'modify', 'delete', 'insert', 'connect', 'disconnect']
+        is_modification = has_existing_diagram and any(kw in request.message.lower() for kw in modification_keywords)
+        
+        if is_modification:
+            # For modifications, run a focused orchestration with the current diagram as base
+            result = await orchestrator.orchestrate(
+                user_prompt=f"Modify the existing architecture: {request.message}",
+                canvas_state=request.canvas_state.model_dump() if request.canvas_state else None,
+                mode=request.mode,
+            )
+        else:
+            # Normal orchestration
+            result = await orchestrator.orchestrate(
+                user_prompt=request.message,
+                canvas_state=request.canvas_state.model_dump() if request.canvas_state else None,
+                mode=request.mode,
+            )
+
+        def format_recommendations(recs: list) -> str:
+            """Format recommendations with proper markdown."""
+            if not recs:
+                return ""
+            lines = ["**Recommendations:**"]
+            for r in recs:
+                if isinstance(r, dict):
+                    action = r.get('action', '')
+                    rationale = r.get('rationale', '')
+                    priority = r.get('priority', '')
+                    if action:
+                        prefix = f"• **{priority.upper()}**: " if priority else "• "
+                        lines.append(f"{prefix}{action}")
+                        if rationale:
+                            lines.append(f"  *{rationale}*")
+                elif isinstance(r, str):
+                    lines.append(f"• {r}")
+            return "\n".join(lines) + "\n"
 
         if result.final_diagram:
             # Diagram was generated/modified
-            reply = f"I've analyzed your request and updated the architecture diagram.\n\n"
-            reply += f"**Summary:** {result.final_diagram.get('summary', 'Architecture updated')}\n\n"
+            summary = result.final_diagram.get('summary', 'Architecture updated')
+            reply = f"✅ **Architecture Updated**\n\n"
+            reply += f"**Summary:** {summary}\n\n"
             
-            if result.final_diagram.get('recommendations'):
-                reply += "**Recommendations:**\n" + "\n".join(f"• {r}" for r in result.final_diagram['recommendations'])
+            recs = result.final_diagram.get('recommendations', [])
+            if recs:
+                reply += format_recommendations(recs)
         else:
             # Just chat response from analyst
             analyst_result = result.agent_results.get("architecture_analyst")
             if analyst_result and analyst_result.output:
-                reply = analyst_result.output.get("summary", "I've analyzed your architecture question.")
+                summary = analyst_result.output.get("summary", "I've analyzed your architecture question.")
+                reply = f"💬 **Analysis Complete**\n\n"
+                reply += f"**Summary:** {summary}\n\n"
+                
+                recs = analyst_result.output.get('recommendations', [])
+                if recs:
+                    reply += format_recommendations(recs)
             else:
                 reply = "I've processed your request. Let me know if you'd like me to generate or modify a diagram."
 
-        return ChatResponse(reply=reply)
+        # Build thinking steps from orchestration result
+        thinking_steps = []
+        for role, agent_result in result.agent_results.items():
+            thinking_steps.append(AgentThinkingStep(
+                agent=role,
+                agent_name=role.replace('_', ' ').title(),
+                status=agent_result.status.value,
+                timestamp=result.agent_results.get(role, type('obj', (object,), {'created_at': None})) if hasattr(agent_result, 'created_at') else '',
+                reasoning=agent_result.reasoning[:500] + "..." if len(agent_result.reasoning) > 500 else agent_result.reasoning,
+                tool_calls=agent_result.tool_calls,
+                model_used=agent_result.output.get('model_used') if isinstance(agent_result.output, dict) else None,
+                model_fallback=False,
+                confidence=agent_result.confidence,
+                output_preview=json.dumps(agent_result.output, default=str)[:1000] if agent_result.output else None,
+            ))
+
+        return ChatResponse(reply=reply, thinking=thinking_steps)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

@@ -61,6 +61,8 @@ build/
 .next/
 out/
 *.log
+#Tests
+tests/
 
 # IDE & Editors
 .idea/

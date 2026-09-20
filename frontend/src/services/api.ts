@@ -23,6 +23,7 @@ export interface ParseRepoResponse {
 export interface ChatResponse {
   reply: string;
   suggested_action?: any;
+  thinking?: AgentThinkingStep[];
 }
 
 export interface SimulateResponse {

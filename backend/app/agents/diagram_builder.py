@@ -495,6 +495,18 @@ async def export_diagram_spec(
 ) -> Dict[str, Any]:
     """Export final diagram specification for frontend"""
     
+    # Handle None inputs
+    if architecture_analysis is None:
+        architecture_analysis = {}
+    if hld_data is None:
+        hld_data = {}
+    if lld_data is None:
+        lld_data = {}
+    if layout_data is None:
+        layout_data = {}
+    if zoom_data is None:
+        zoom_data = {}
+    
     hld_nodes = layout_data.get("nodes", hld_data.get("nodes", [])) if layout_data else hld_data.get("nodes", [])
     hld_edges = layout_data.get("edges", hld_data.get("edges", [])) if layout_data else hld_data.get("edges", [])
     lld_nodes = lld_data.get("nodes", [])
@@ -534,7 +546,7 @@ async def export_diagram_spec(
             "description": "Low-Level Design - Detailed implementation specifications",
         },
         "semantic_zoom": {
-            "macro": {"nodes": macro_nodes, "zoom_range": [0.1, 0.5]},
+            "macro": {"nodes": macro_view, "zoom_range": [0.1, 0.5]},
             "normal": {"nodes": normal_view, "zoom_range": [0.5, 0.8]},
             "micro": {"nodes": micro_view, "zoom_range": [0.8, 3.0]},
         },

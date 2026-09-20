@@ -493,4 +493,8 @@ def create_agent_context(
         canvas_state=canvas_state,
         mode=mode,
         markdown_spec=markdown_spec,
+        shared_memory={
+            "repo_analysis": {},
+            "repo_context": {},
+        },
     )

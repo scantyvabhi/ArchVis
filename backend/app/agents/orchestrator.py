@@ -67,7 +67,8 @@ class AgentOrchestrator:
         from .architecture_analyst import (
             analyze_bottlenecks, evaluate_scalability, check_reliability,
             validate_patterns, generate_hld_spec, generate_lld_spec,
-            compare_architectures, estimate_costs
+            compare_architectures, estimate_costs,
+            match_prompt_to_preset, generate_architecture_from_prompt
         )
         from .diagram_builder import (
             generate_hld_diagram, generate_lld_diagram, layout_components,
@@ -91,6 +92,8 @@ class AgentOrchestrator:
             "generate_lld_spec": generate_lld_spec,
             "compare_architectures": compare_architectures,
             "estimate_costs": estimate_costs,
+            "match_prompt_to_preset": match_prompt_to_preset,
+            "generate_architecture_from_prompt": generate_architecture_from_prompt,
             # Diagram Builder tools
             "generate_hld_diagram": generate_hld_diagram,
             "generate_lld_diagram": generate_lld_diagram,
@@ -227,11 +230,24 @@ class AgentOrchestrator:
         agent_results = {}
         consensus_log = []
 
-        # Round 0: Initial independent execution
-        fetcher_result = await self.agents[AgentRole.REPO_FETCHER].execute(context)
-        agent_results[AgentRole.REPO_FETCHER.value] = fetcher_result
-        context.agent_outputs[AgentRole.REPO_FETCHER.value] = fetcher_result.output
-        consensus_log.append(self._log_consensus(0, AgentRole.REPO_FETCHER, fetcher_result))
+        # Round 0: Run repo fetcher only if repo_url is provided
+        has_repo = bool(context.repo_url)
+        if has_repo:
+            fetcher_result = await self.agents[AgentRole.REPO_FETCHER].execute(context)
+            agent_results[AgentRole.REPO_FETCHER.value] = fetcher_result
+            context.agent_outputs[AgentRole.REPO_FETCHER.value] = fetcher_result.output
+            consensus_log.append(self._log_consensus(0, AgentRole.REPO_FETCHER, fetcher_result))
+        else:
+            # For prompt-only requests, skip repo fetcher
+            agent_results[AgentRole.REPO_FETCHER.value] = AgentResult(
+                agent_role=AgentRole.REPO_FETCHER,
+                status=AgentStatus.COMPLETED,
+                output={},
+                reasoning="Skipped: No repository URL provided",
+                confidence=1.0,
+                execution_time_ms=0,
+            )
+            consensus_log.append(self._log_consensus(0, AgentRole.REPO_FETCHER, agent_results[AgentRole.REPO_FETCHER.value]))
 
         # Run analyst and builder with initial context
         for round_num in range(self.max_consensus_rounds):
@@ -239,6 +255,8 @@ class AgentOrchestrator:
             analyst_result = await self.agents[AgentRole.ARCHITECTURE_ANALYST].execute(context)
             agent_results[AgentRole.ARCHITECTURE_ANALYST.value] = analyst_result
             context.agent_outputs[AgentRole.ARCHITECTURE_ANALYST.value] = analyst_result.output
+            # Also store in shared_memory for diagram_builder
+            context.shared_memory["architecture_analysis"] = analyst_result.output
             consensus_log.append(self._log_consensus(round_num + 1, AgentRole.ARCHITECTURE_ANALYST, analyst_result))
 
             # Builder runs with analyst output
@@ -285,11 +303,13 @@ class AgentOrchestrator:
 
     def _check_consensus(self, agent_results: Dict[str, AgentResult]) -> tuple[bool, float]:
         """Check if agents have reached consensus"""
-        confidences = [r.confidence for r in agent_results.values() if r.status == AgentStatus.COMPLETED]
+        # Only consider agents that completed successfully
+        completed_results = [r for r in agent_results.values() if r.status == AgentStatus.COMPLETED]
         
-        if not confidences:
+        if not completed_results:
             return False, 0.0
 
+        confidences = [r.confidence for r in completed_results]
         avg_confidence = sum(confidences) / len(confidences)
         min_confidence = min(confidences)
         

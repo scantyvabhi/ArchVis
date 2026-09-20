@@ -1,28 +1,60 @@
 import { toPng, toSvg } from 'html-to-image';
 import { ArchitectureNode, ArchitectureEdge } from '../types/architecture';
 
+function getThemeBackground(): string {
+  // Check if dark mode is active
+  if (typeof document !== 'undefined' && document.documentElement.classList.contains('dark')) {
+    return '#0f172a'; // dark mode background
+  }
+  return '#F8FAFC'; // light mode background
+}
+
 export async function exportCanvasToPng(element: HTMLElement, filename = 'archvis-system-design.png'): Promise<void> {
   try {
-    const dataUrl = await toPng(element, {
-      backgroundColor: '#F8FAFC',
-      quality: 0.98,
-      pixelRatio: 3, // High DPI (300 DPI equivalent)
-      filter: (node) => {
-        // Exclude controls, minimap, or floating assistant from the export if desired
-        const exclusionClasses = ['react-flow__panel', 'no-export'];
-        if (node instanceof HTMLElement) {
-          return !exclusionClasses.some((cls) => node.classList.contains(cls));
-        }
-        return true;
-      },
-    });
-
-    const link = document.createElement('a');
-    link.download = filename;
-    link.href = dataUrl;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // Clone the element to avoid modifying the original
+    const clone = element.cloneNode(true) as HTMLElement;
+    
+    // Apply theme-aware styles to the clone
+    const isDark = document.documentElement.classList.contains('dark');
+    
+    // Temporarily add the clone to body for rendering
+    document.body.appendChild(clone);
+    clone.style.position = 'absolute';
+    clone.style.left = '-9999px';
+    clone.style.top = '0';
+    clone.style.backgroundColor = getThemeBackground();
+    
+    // Apply dark/light mode classes to the clone
+    if (isDark) {
+      clone.classList.add('dark');
+    } else {
+      clone.classList.remove('dark');
+    }
+    
+    try {
+      const dataUrl = await toPng(clone, {
+        backgroundColor: getThemeBackground(),
+        quality: 0.98,
+        pixelRatio: 3, // High DPI (300 DPI equivalent)
+        filter: (node) => {
+          const exclusionClasses = ['react-flow__panel', 'no-export'];
+          if (node instanceof HTMLElement) {
+            return !exclusionClasses.some((cls) => node.classList.contains(cls));
+          }
+          return true;
+        },
+      });
+  
+      const link = document.createElement('a');
+      link.download = filename;
+      link.href = dataUrl;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } finally {
+      // Clean up
+      document.body.removeChild(clone);
+    }
   } catch (error) {
     console.error('Error exporting canvas as PNG:', error);
     throw error;
@@ -31,23 +63,45 @@ export async function exportCanvasToPng(element: HTMLElement, filename = 'archvi
 
 export async function exportCanvasToSvg(element: HTMLElement, filename = 'archvis-system-design.svg'): Promise<void> {
   try {
-    const dataUrl = await toSvg(element, {
-      backgroundColor: '#F8FAFC',
-      filter: (node) => {
-        const exclusionClasses = ['react-flow__panel', 'no-export'];
-        if (node instanceof HTMLElement) {
-          return !exclusionClasses.some((cls) => node.classList.contains(cls));
-        }
-        return true;
-      },
-    });
-
-    const link = document.createElement('a');
-    link.download = filename;
-    link.href = dataUrl;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // Clone the element to avoid modifying the original
+    const clone = element.cloneNode(true) as HTMLElement;
+    
+    const isDark = document.documentElement.classList.contains('dark');
+    
+    // Temporarily add the clone to body for rendering
+    document.body.appendChild(clone);
+    clone.style.position = 'absolute';
+    clone.style.left = '-9999px';
+    clone.style.top = '0';
+    clone.style.backgroundColor = getThemeBackground();
+    
+    if (isDark) {
+      clone.classList.add('dark');
+    } else {
+      clone.classList.remove('dark');
+    }
+    
+    try {
+      const dataUrl = await toSvg(clone, {
+        backgroundColor: getThemeBackground(),
+        filter: (node) => {
+          const exclusionClasses = ['react-flow__panel', 'no-export'];
+          if (node instanceof HTMLElement) {
+            return !exclusionClasses.some((cls) => node.classList.contains(cls));
+          }
+          return true;
+        },
+      });
+  
+      const link = document.createElement('a');
+      link.download = filename;
+      link.href = dataUrl;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } finally {
+      document.body.removeChild(clone);
+    }
   } catch (error) {
     console.error('Error exporting canvas as SVG:', error);
     throw error;
