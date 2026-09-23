@@ -68,7 +68,8 @@ class AgentOrchestrator:
             analyze_bottlenecks, evaluate_scalability, check_reliability,
             validate_patterns, generate_hld_spec, generate_lld_spec,
             compare_architectures, estimate_costs,
-            match_prompt_to_preset, generate_architecture_from_prompt
+            match_prompt_to_preset, generate_architecture_from_prompt,
+            modify_existing_architecture, validate_architecture_quality
         )
         from .diagram_builder import (
             generate_hld_diagram, generate_lld_diagram, layout_components,
@@ -94,6 +95,8 @@ class AgentOrchestrator:
             "estimate_costs": estimate_costs,
             "match_prompt_to_preset": match_prompt_to_preset,
             "generate_architecture_from_prompt": generate_architecture_from_prompt,
+            "modify_existing_architecture": modify_existing_architecture,
+            "validate_architecture_quality": validate_architecture_quality,
             # Diagram Builder tools
             "generate_hld_diagram": generate_hld_diagram,
             "generate_lld_diagram": generate_lld_diagram,

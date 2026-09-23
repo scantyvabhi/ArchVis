@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useRef, useEffect } from 'react';
 import {
   ReactFlow,
   Background,
@@ -16,6 +16,7 @@ import '@xyflow/react/dist/style.css';
 import { CustomNode } from './CustomNode';
 import { CustomEdge } from './CustomEdge';
 import { ArchitectureNode, ArchitectureEdge, ComponentTemplate } from '../../types/architecture';
+import { TypeSafeValidationBadge } from './TypeSafeValidationBadge';
 
 const nodeTypes: NodeTypes = {
   architectureNode: CustomNode as any,
@@ -35,6 +36,7 @@ interface ArchitectureCanvasProps {
   onNodeClick: (node: ArchitectureNode) => void;
   onPaneClick: () => void;
   onDropComponent: (template: ComponentTemplate, position: { x: number; y: number }) => void;
+  typesafeValidation?: any;
 }
 
 const CanvasInner: React.FC<ArchitectureCanvasProps> = ({
@@ -46,9 +48,23 @@ const CanvasInner: React.FC<ArchitectureCanvasProps> = ({
   onNodeClick,
   onPaneClick,
   onDropComponent,
+  typesafeValidation,
 }) => {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, setEdges } = useReactFlow();
+
+  // Listen for edge protocol changes from CustomEdge
+  useEffect(() => {
+    const handleProtocolChange = (event: CustomEvent) => {
+      const { edgeId, newProtocol } = event.detail;
+      setEdges((eds) => eds.map(edge => 
+        edge.id === edgeId ? { ...edge, data: { ...edge.data, protocol: newProtocol } } : edge
+      ));
+    };
+
+    window.addEventListener('edge-protocol-change', handleProtocolChange as EventListener);
+    return () => window.removeEventListener('edge-protocol-change', handleProtocolChange as EventListener);
+  }, [setEdges]);
 
   const handleDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
@@ -79,6 +95,9 @@ const CanvasInner: React.FC<ArchitectureCanvasProps> = ({
 
   return (
     <div ref={reactFlowWrapper} className="w-full h-full relative" onDragOver={handleDragOver} onDrop={handleDrop}>
+      {/* TypeSafe Validation Badge */}
+      <TypeSafeValidationBadge validation={typesafeValidation} />
+      
       <ReactFlow
         nodes={nodes as any}
         edges={edges as any}

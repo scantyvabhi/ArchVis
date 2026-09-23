@@ -26,6 +26,7 @@ import { PRESET_ARCHITECTURES } from './constants/presets';
 import { getLayoutedElements } from './utils/layout';
 import {
   exportCanvasToPng,
+  exportCanvasToSvg,
   exportArchitectureJson,
   parseImportedJson,
 } from './utils/export';
@@ -33,7 +34,7 @@ import {
   orchestrateAgents,
   generateArchitecture,
   parseRepo,
-  sendChatMessage,
+  agentChat,
   checkBackendHealth,
 } from './services/api';
 import { AgentThinkingStep } from './types/architecture';
@@ -51,6 +52,7 @@ export function App() {
   const [backendHealthy, setBackendHealthy] = useState(false);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [currentAgentThinking, setCurrentAgentThinking] = useState<AgentThinkingStep | undefined>(undefined);
+  const [typesafeValidation, setTypesafeValidation] = useState<any>(null);
 
   // Live Simulation Engine State
   const [isSimulating, setIsSimulating] = useState(false);
@@ -343,6 +345,17 @@ export function App() {
     exportArchitectureJson(nodes, edges, `archvis-${mode}`);
   };
 
+  // Export SVG
+  const handleExportSvg = async () => {
+    try {
+      const reactFlowInstance = document.querySelector('.react-flow') as any;
+      const viewport = reactFlowInstance?.getViewport?.() || { x: 0, y: 0, zoom: 1 };
+      await exportCanvasToSvg(nodes, edges, viewport, `archvis-${mode}-architecture.svg`);
+    } catch (err) {
+      alert('Could not export SVG. Check console for details.');
+    }
+  };
+
   // Import JSON
   const handleImportJson = (file: File) => {
     const reader = new FileReader();
@@ -464,7 +477,7 @@ export function App() {
     await handleGenerateArchitecture(`System Design from Document Specification:\n${docContent.slice(0, 1500)}`);
   };
 
-  // Send contextual AI Chat Message
+  // Send contextual AI Chat Message (multi-agent)
   const handleSendChatMessage = async (messageText: string) => {
     setIsAiLoading(true);
     setMessages((prev) => [
@@ -477,15 +490,38 @@ export function App() {
       },
     ]);
 
+    // Simulate live agent progress for chat
+    const chatAgents = ['architecture_analyst', 'diagram_builder'];
+    let chatAgentIndex = 0;
+    const chatProgressInterval = setInterval(() => {
+      if (chatAgentIndex < chatAgents.length) {
+        setCurrentAgentThinking({
+          agent: chatAgents[chatAgentIndex],
+          agentName: chatAgents[chatAgentIndex].replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase()),
+          status: 'running',
+          timestamp: new Date().toISOString(),
+          reasoning: 'Processing...',
+          toolCalls: [],
+          modelUsed: undefined,
+          modelFallback: false,
+          confidence: 0.5,
+          outputPreview: undefined,
+        });
+        chatAgentIndex++;
+      } else {
+        clearInterval(chatProgressInterval);
+      }
+    }, 1500);
+
     try {
-      const result = await sendChatMessage(
+      const result = await agentChat(
         messageText,
         { nodes, edges },
         mode
       );
 
-      // If the chat returned a diagram, apply it to the canvas
-      if (result.diagram) {
+      // If the chat returned a diagram with nodes, apply it to the canvas
+      if (result.diagram && result.diagram.nodes && result.diagram.nodes.length > 0) {
         const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
           result.diagram.nodes,
           result.diagram.edges,
@@ -493,7 +529,26 @@ export function App() {
         );
         setNodes(layoutedNodes);
         setEdges(layoutedEdges);
+
+        // Extract TypeSafe validation from diagram metadata
+        if (result.diagram.metadata?.typesafe_validation) {
+          setTypesafeValidation(result.diagram.metadata.typesafe_validation);
+        }
       }
+
+      // Build thinking steps for the message (same format as orchestrator)
+      const thinkingSteps = result.thinking?.map((step: any) => ({
+        agent: step.agent,
+        agentName: step.agentName,
+        status: step.status,
+        timestamp: step.timestamp,
+        reasoning: step.reasoning,
+        toolCalls: step.toolCalls,
+        modelUsed: step.modelUsed,
+        modelFallback: step.modelFallback,
+        confidence: step.confidence,
+        outputPreview: step.outputPreview,
+      })) || [];
 
       setMessages((prev) => [
         ...prev,
@@ -502,6 +557,7 @@ export function App() {
           sender: 'assistant',
           text: result.reply,
           timestamp: new Date().toISOString(),
+          thinking: thinkingSteps,
         },
       ]);
     } catch (err: any) {
@@ -515,6 +571,8 @@ export function App() {
         },
       ]);
     } finally {
+      clearInterval(chatProgressInterval);
+      setCurrentAgentThinking(undefined);
       setIsAiLoading(false);
     }
   };
@@ -531,6 +589,29 @@ export function App() {
         timestamp: new Date().toISOString(),
       },
     ]);
+
+    // Simulate live agent progress (since API is synchronous)
+    const agentOrder = ['repo_fetcher', 'architecture_analyst', 'diagram_builder'];
+    let currentAgentIndex = 0;
+    const progressInterval = setInterval(() => {
+      if (currentAgentIndex < agentOrder.length) {
+        setCurrentAgentThinking({
+          agent: agentOrder[currentAgentIndex],
+          agentName: agentOrder[currentAgentIndex].replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase()),
+          status: 'running',
+          timestamp: new Date().toISOString(),
+          reasoning: 'Processing...',
+          toolCalls: [],
+          modelUsed: undefined,
+          modelFallback: false,
+          confidence: 0.5,
+          outputPreview: undefined,
+        });
+        currentAgentIndex++;
+      } else {
+        clearInterval(progressInterval);
+      }
+    }, 2000);
 
     try {
       const { orchestrateAgents } = await import('./services/api');
@@ -550,6 +631,11 @@ export function App() {
         );
         setNodes(layoutedNodes);
         setEdges(layoutedEdges);
+
+        // Extract TypeSafe validation from diagram metadata
+        if (result.diagram.metadata?.typesafe_validation) {
+          setTypesafeValidation(result.diagram.metadata.typesafe_validation);
+        }
 
         let reply = `🤖 **Multi-Agent Orchestration Complete**\n\n`;
         reply += `**Session:** ${result.session_id}\n`;
@@ -624,6 +710,8 @@ export function App() {
         },
       ]);
     } finally {
+      clearInterval(progressInterval);
+      setCurrentAgentThinking(undefined);
       setIsAiLoading(false);
     }
   };
@@ -656,6 +744,7 @@ export function App() {
           onNodeClick={(node) => setSelectedNodeId(node.id)}
           onPaneClick={() => setSelectedNodeId(null)}
           onDropComponent={handleDropComponent}
+          typesafeValidation={typesafeValidation}
         />
 
         {/* Live Simulation Telemetry Overlay */}
@@ -688,6 +777,7 @@ export function App() {
           onOrchestrateAgents={handleOrchestrateAgents}
           onOpenRepoIngestion={() => setIsRepoModalOpen(true)}
           onExportPng={handleExportPng}
+          onExportSvg={handleExportSvg}
           onExportJson={handleExportJson}
           messages={messages}
           setMessages={setMessages}

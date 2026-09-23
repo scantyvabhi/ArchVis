@@ -63,7 +63,7 @@ out/
 *.log
 #Tests
 tests/
-
+./docker-compose.yml
 # IDE & Editors
 .idea/
 .vscode/

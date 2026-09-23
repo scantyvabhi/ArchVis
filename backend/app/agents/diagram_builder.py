@@ -61,6 +61,11 @@ Key outputs:
             reasoning_parts.append(f"Building diagram for: {user_prompt[:100]}...")
             reasoning_parts.append(f"Mode: {mode}, Has architecture analysis: {bool(architecture_analysis)}")
 
+            # Get TypeSafe validation from Architecture Analyst
+            typesafe_validation = context.shared_memory.get("typesafe_validation", {})
+            if typesafe_validation:
+                reasoning_parts.append(f"TypeSafe validation available: {typesafe_validation.get('summary', 'N/A')}")
+
             # Generate HLD diagram
             hld_result = await self._call_tool("generate_hld_diagram",
                 architecture_analysis=architecture_analysis, repo_analysis=repo_analysis, mode=mode)
@@ -98,6 +103,10 @@ Key outputs:
             tool_calls.append({"tool": "export_diagram_spec", "result": export_result.success})
 
             final_diagram = export_result.data
+
+            # Add TypeSafe validation to diagram metadata
+            if typesafe_validation:
+                final_diagram.setdefault("metadata", {})["typesafe_validation"] = typesafe_validation
 
             context.shared_memory["diagram_spec"] = final_diagram
             context.agent_outputs[self.role.value] = final_diagram
@@ -152,6 +161,118 @@ CATEGORY_ICONS = {
 
 def generate_node_id(prefix: str = "node") -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
+
+
+# Smart connection logic - defines standard architectural patterns
+CONNECTION_RULES = {
+    # Source type -> list of target types it typically connects to
+    "api": ["gateway", "service"],
+    "gateway": ["service", "cache", "queue", "database"],
+    "service": ["database", "cache", "queue", "service", "storage"],
+    "cache": ["database"],
+    "queue": ["service", "database", "storage"],
+    "storage": [],
+    "database": [],
+    "load_balancer": ["gateway", "service", "api"],
+    "cdn": ["api", "storage"],
+}
+
+# Protocol mapping for connections
+CONNECTION_PROTOCOLS = {
+    ("api", "gateway"): "HTTPS",
+    ("api", "service"): "HTTPS/REST",
+    ("api", "load_balancer"): "HTTPS",
+    ("gateway", "service"): "gRPC",
+    ("gateway", "cache"): "TCP/Redis",
+    ("gateway", "queue"): "AMQP/Kafka",
+    ("gateway", "database"): "SQL",
+    ("gateway", "load_balancer"): "HTTP",
+    ("service", "database"): "SQL",
+    ("service", "cache"): "TCP/Redis",
+    ("service", "queue"): "Kafka/AMQP",
+    ("service", "service"): "gRPC/REST",
+    ("service", "storage"): "S3/API",
+    ("cache", "database"): "SQL",
+    ("queue", "service"): "Kafka/AMQP",
+    ("queue", "database"): "SQL",
+    ("queue", "storage"): "S3/API",
+    ("load_balancer", "gateway"): "HTTP",
+    ("load_balancer", "service"): "HTTP/REST",
+    ("load_balancer", "api"): "HTTPS",
+    ("cdn", "api"): "HTTPS",
+    ("cdn", "storage"): "HTTPS",
+}
+
+# Traffic estimation rules
+TRAFFIC_MULTIPLIERS = {
+    ("api", "gateway"): 1.0,
+    ("gateway", "service"): 0.8,
+    ("service", "database"): 0.6,
+    ("service", "cache"): 0.4,
+    ("service", "queue"): 0.3,
+    ("gateway", "queue"): 0.2,
+}
+
+
+def infer_connections(components: List[Dict], existing_flows: List[Dict] = None) -> List[Dict]:
+    """
+    Automatically infer data flows between components based on architectural patterns.
+    Creates edges where they don't exist based on standard component relationships.
+    """
+    existing_flows = existing_flows or []
+    existing_pairs = {(f.get("from"), f.get("to")) for f in existing_flows}
+    
+    # Group components by type
+    components_by_type = {}
+    for comp in components:
+        comp_type = comp.get("type", "service")
+        if comp_type not in components_by_type:
+            components_by_type[comp_type] = []
+        components_by_type[comp_type].append(comp)
+    
+    inferred_flows = []
+    
+    # For each source type, connect to target types
+    for source_type, target_types in CONNECTION_RULES.items():
+        source_components = components_by_type.get(source_type, [])
+        if not source_components:
+            continue
+            
+        for target_type in target_types:
+            target_components = components_by_type.get(target_type, [])
+            if not target_components:
+                continue
+            
+            # Connect each source to relevant targets
+            for source_comp in source_components:
+                source_name = source_comp.get("name", source_type.title())
+                
+                # Smart targeting: prefer first target, or distribute
+                for i, target_comp in enumerate(target_components):
+                    target_name = target_comp.get("name", target_type.title())
+                    
+                    # Skip if already exists
+                    if (source_name, target_name) in existing_pairs:
+                        continue
+                    
+                    # Determine protocol
+                    protocol = CONNECTION_PROTOCOLS.get((source_type, target_type), "HTTP/REST")
+                    
+                    # Estimate traffic based on component configs
+                    source_rps = source_comp.get("config", {}).get("rps", 1000)
+                    target_rps = target_comp.get("config", {}).get("rps", 1000)
+                    traffic_rps = min(source_rps, target_rps)
+                    
+                    inferred_flows.append({
+                        "from": source_name,
+                        "to": target_name,
+                        "protocol": protocol,
+                        "traffic_estimate_rps": traffic_rps,
+                        "description": f"Auto-inferred: {source_name} -> {target_name}",
+                        "auto_inferred": True
+                    })
+    
+    return inferred_flows
 
 
 async def generate_hld_diagram(architecture_analysis: Dict, repo_analysis: Dict, mode: str) -> Dict[str, Any]:
@@ -216,16 +337,22 @@ async def generate_hld_diagram(architecture_analysis: Dict, repo_analysis: Dict,
             "data": node_data,
         })
 
-    # Create edges from data flows
+    # Create edges from data flows + inferred connections
     node_name_to_id = {n["data"]["label"]: n["id"] for n in nodes}
 
-    for i, flow in enumerate(data_flows):
+    # Combine explicit flows with inferred connections
+    all_flows = list(data_flows)
+    inferred_flows = infer_connections(components, data_flows)
+    all_flows.extend(inferred_flows)
+
+    for i, flow in enumerate(all_flows):
         source_name = flow.get("from", "")
         target_name = flow.get("to", "")
         source_id = node_name_to_id.get(source_name)
         target_id = node_name_to_id.get(target_name)
 
         if source_id and target_id:
+            is_inferred = flow.get("auto_inferred", False)
             edges.append({
                 "id": f"edge-{i}",
                 "source": source_id,
@@ -236,6 +363,7 @@ async def generate_hld_diagram(architecture_analysis: Dict, repo_analysis: Dict,
                     "protocol": flow.get("protocol", "HTTP/REST"),
                     "trafficRps": flow.get("traffic_estimate_rps", 1000),
                     "latency": flow.get("latency", 10),
+                    "auto_inferred": is_inferred,
                 },
             })
 
@@ -314,16 +442,22 @@ async def generate_lld_diagram(architecture_analysis: Dict, repo_analysis: Dict,
             "data": node_data,
         })
 
-    # Create detailed edges
+    # Create detailed edges + inferred connections
     node_name_to_id = {n["data"]["label"]: n["id"] for n in nodes}
 
-    for i, flow in enumerate(data_flows):
+    # Combine explicit flows with inferred connections for LLD too
+    all_flows = list(data_flows)
+    inferred_flows = infer_connections(components, data_flows)
+    all_flows.extend(inferred_flows)
+
+    for i, flow in enumerate(all_flows):
         source_name = flow.get("from", "")
         target_name = flow.get("to", "")
         source_id = node_name_to_id.get(source_name)
         target_id = node_name_to_id.get(target_name)
 
         if source_id and target_id:
+            is_inferred = flow.get("auto_inferred", False)
             edges.append({
                 "id": f"edge-lld-{i}",
                 "source": source_id,
@@ -335,6 +469,7 @@ async def generate_lld_diagram(architecture_analysis: Dict, repo_analysis: Dict,
                     "trafficRps": flow.get("traffic_estimate_rps", 1000),
                     "latency": flow.get("latency", 10),
                     "description": flow.get("description", ""),
+                    "auto_inferred": is_inferred,
                 },
             })
 

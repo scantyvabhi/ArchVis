@@ -1,5 +1,6 @@
 import os
 import uuid
+import json
 from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,8 +28,8 @@ from .ai_agent import AIAgent
 from .repo_parser import RepoParser
 from .agents import create_orchestrator, OrchestrationMode
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from parent directory
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
 
 app = FastAPI(
     title="ArchVis AI - Architecture & Simulation API",
@@ -367,8 +368,15 @@ async def agent_chat(request: ChatRequest):
                     lines.append(f"• {r}")
             return "\n".join(lines) + "\n"
 
-        if result.final_diagram:
-            # Diagram was generated/modified
+        # Check if final_diagram actually has nodes (not just metadata)
+        has_valid_diagram = (
+            result.final_diagram 
+            and isinstance(result.final_diagram.get('nodes'), list) 
+            and len(result.final_diagram['nodes']) > 0
+        )
+        
+        if has_valid_diagram:
+            # Diagram was generated/modified with actual nodes
             summary = result.final_diagram.get('summary', 'Architecture updated')
             reply = f"✅ **Architecture Updated**\n\n"
             reply += f"**Summary:** {summary}\n\n"
@@ -406,7 +414,10 @@ async def agent_chat(request: ChatRequest):
                 output_preview=json.dumps(agent_result.output, default=str)[:1000] if agent_result.output else None,
             ))
 
-        return ChatResponse(reply=reply, thinking=thinking_steps, diagram=result.final_diagram)
+        # Only return diagram if it has actual nodes
+        diagram_to_return = result.final_diagram if has_valid_diagram else None
+        
+        return ChatResponse(reply=reply, thinking=thinking_steps, diagram=diagram_to_return)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

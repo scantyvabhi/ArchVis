@@ -293,12 +293,12 @@ class MultiModelClient:
     def _initialize_clients(self):
         import httpx
 
-        self.httpx_client = httpx.AsyncClient(timeout=60.0)
+        self.httpx_client = httpx.AsyncClient(timeout=180.0)
 
         if self.config.get("gemini_api_key"):
             self.clients["gemini"] = {
                 "api_key": self.config["gemini_api_key"],
-                "model": self.config.get("gemini_model", "gemini-1.5-flash"),
+                "model": self.config.get("gemini_model", "gemini-2.5-flash"),
                 "endpoint": "https://generativelanguage.googleapis.com/v1beta/models",
             }
 
@@ -341,7 +341,9 @@ class MultiModelClient:
                     response_format=response_format,
                 )
             except Exception as e:
-                print(f"Model {model_name} failed: {e}, trying next...")
+                import traceback
+                print(f"Model {model_name} failed: {e}")
+                traceback.print_exc()
                 continue
 
         raise RuntimeError("All models failed to generate response")
@@ -433,7 +435,9 @@ class MultiModelClient:
             json=payload,
             headers=headers,
         )
-        res.raise_for_status()
+        if res.status_code != 200:
+            error_text = await res.aread()
+            raise RuntimeError(f"Nemotron API error {res.status_code}: {error_text.decode()}")
         res_json = res.json()
         return res_json["choices"][0]["message"]["content"]
 

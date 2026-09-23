@@ -191,26 +191,17 @@ export async function exportCanvasToPng(
     
     const dataUrl = canvas.toDataURL('image/png', 0.98);
     
+    // Use a single reliable download approach
     const link = document.createElement('a');
     link.download = filename;
     link.href = dataUrl;
+    link.style.display = 'none';
     document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link);
-    
-    // Also trigger download via blob as fallback
-    canvas.toBlob((blob) => {
-      if (blob) {
-        const url = URL.createObjectURL(blob);
-        const link2 = document.createElement('a');
-        link2.download = filename;
-        link2.href = url;
-        document.body.appendChild(link2);
-        link2.click();
-        document.body.removeChild(link2);
-        URL.revokeObjectURL(url);
-      }
-    }, 'image/png', 0.98);
+    // Small delay to ensure the click is processed
+    setTimeout(() => {
+      document.body.removeChild(link);
+    }, 100);
   } catch (error) {
     console.error('Error exporting canvas as PNG:', error);
     throw error;
@@ -283,9 +274,12 @@ export async function exportCanvasToSvg(
     const link = document.createElement('a');
     link.download = filename;
     link.href = dataUrl;
+    link.style.display = 'none';
     document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link);
+    setTimeout(() => {
+      document.body.removeChild(link);
+    }, 100);
   } catch (error) {
     console.error('Error exporting canvas as SVG:', error);
     throw error;

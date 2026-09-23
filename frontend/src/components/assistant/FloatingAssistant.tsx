@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Sparkles,
   Send,
@@ -19,6 +19,7 @@ import {
   Layers,
   Copy,
   Check,
+  FileText,
 } from 'lucide-react';
 import { AppMode, ChatMessage, ArchitectureNode, ArchitectureEdge, AgentThinkingStep } from '../../types/architecture';
 import { AgentThinkingDisplay } from './AgentThinkingDisplay';
@@ -32,6 +33,7 @@ interface FloatingAssistantProps {
   onOrchestrateAgents: (prompt: string, repoUrl?: string) => Promise<void>;
   onOpenRepoIngestion: () => void;
   onExportPng: () => Promise<void>;
+  onExportSvg: () => Promise<void>;
   onExportJson: () => void;
   messages: ChatMessage[];
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
@@ -48,6 +50,7 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
   onOrchestrateAgents,
   onOpenRepoIngestion,
   onExportPng,
+  onExportSvg,
   onExportJson,
   messages,
   setMessages,
@@ -57,7 +60,62 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [inputText, setInputText] = useState('');
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [commandFilter, setCommandFilter] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Handler functions for export actions from command palette
+  const handleExportPng = useCallback(async () => {
+    try {
+      await onExportPng();
+    } catch (error) {
+      console.error('Export PNG failed:', error);
+    }
+  }, [onExportPng]);
+
+  const handleExportJson = useCallback(() => {
+    try {
+      onExportJson();
+    } catch (error) {
+      console.error('Export JSON failed:', error);
+    }
+  }, [onExportJson]);
+
+  const handleExportSvg = useCallback(async () => {
+    try {
+      await onExportSvg();
+    } catch (error) {
+      console.error('Export SVG failed:', error);
+    }
+  }, [onExportSvg]);
+
+  // Learner mode commands for the command palette
+  const learnerCommands = [
+    { id: 'explain', label: 'Explain this architecture', description: 'Get a detailed explanation of the current architecture', icon: '📐' },
+    { id: 'learn', label: 'Learn about a component', description: 'Get detailed explanation of a specific component', icon: '📚' },
+    { id: 'explain-flow', label: 'Explain data flow', description: 'Step-by-step explanation of data flow through the system', icon: '🔄' },
+    { id: 'bottlenecks', label: 'Find bottlenecks', description: 'Identify performance bottlenecks in the architecture', icon: '🔍' },
+    { id: 'optimize', label: 'Optimize for cost', description: 'Get cost optimization recommendations', icon: '💰' },
+    { id: 'scale', label: 'Scale for traffic', description: 'Get scaling recommendations for expected traffic', icon: '📈' },
+    { id: 'security', label: 'Security review', description: 'Get security best practices for this architecture', icon: '🔒' },
+    { id: 'monitoring', label: 'Add monitoring', description: 'Get monitoring and alerting recommendations', icon: '📊' },
+    { id: 'compare', label: 'Compare patterns', description: 'Compare different architectural patterns', icon: '⚖️' },
+    { id: 'best-practices', label: 'Best practices', description: 'Show best practices for this architecture type', icon: '⭐' },
+  ];
+
+  // Pro mode commands for the command palette
+  const proCommands = [
+    { id: 'export-png', label: 'Export as PNG', description: 'Export architecture diagram as high-res PNG', icon: '🖼️' },
+    { id: 'export-json', label: 'Export as JSON', description: 'Export architecture as JSON file', icon: '📄' },
+    { id: 'export-svg', label: 'Export as SVG', description: 'Export architecture as SVG vector', icon: '📐' },
+    { id: 'raw-json', label: 'View raw JSON', description: 'View raw architecture JSON in clipboard', icon: '🔧' },
+    { id: 'simulate', label: 'Run simulation', description: 'Run traffic simulation with custom parameters', icon: '▶️' },
+    { id: 'advanced-sim', label: 'Advanced simulation', description: 'Run advanced simulation with custom load patterns', icon: '⚙️' },
+    { id: 'export-all', label: 'Export all formats', description: 'Export PNG, JSON, and SVG at once', icon: '📦' },
+    { id: 'validate', label: 'Validate diagram', description: 'Validate diagram for issues and best practices', icon: '✅' },
+    { id: 'typesafe-validate', label: 'TypeSafe AI Validation', description: 'Run structured quality gates with TypeSafe AI', icon: '🛡️' },
+    { id: 'compare', label: 'Compare versions', description: 'Compare current diagram with previous versions', icon: '🔄' },
+  ];
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -127,8 +185,215 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
     'Design Stripe payment platform',
   ];
 
+// Compute filtered commands for command palette
+  const filteredCommands = (mode === 'learner' ? learnerCommands : proCommands)
+    .filter(cmd => cmd.label.toLowerCase().includes(commandFilter.toLowerCase()));
+
+  // Commands that should execute directly without setting input text
+  const directActionCommands = ['export-png', 'export-json', 'export-svg', 'export-all'];
+
+  // Track focused command index for keyboard navigation
+  const [focusedCommandIndex, setFocusedCommandIndex] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const paletteRef = useRef<HTMLDivElement>(null);
+  const commandRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  // Extract filter text from input (text after "/")
+  const getFilterText = (value: string): string => {
+    const slashIndex = value.lastIndexOf('/');
+    if (slashIndex === -1 || slashIndex === value.length - 1) return '';
+    return value.substring(slashIndex + 1).toLowerCase();
+  };
+
+  // Handle keyboard navigation on input
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!showCommandPalette) return;
+    
+    // Prevent default for navigation keys
+    if (['ArrowDown', 'ArrowUp', 'Enter', 'Escape'].includes(e.key)) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
+    if (e.key === 'ArrowDown') {
+      setFocusedCommandIndex(prev => Math.min(prev + 1, filteredCommands.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      setFocusedCommandIndex(prev => Math.max(prev - 1, 0));
+    } else if (e.key === 'Enter') {
+      if (filteredCommands[focusedCommandIndex]) {
+        const cmd = filteredCommands[focusedCommandIndex];
+        const isDirectAction = directActionCommands.includes(cmd.id);
+        
+        if (!isDirectAction) {
+          setInputText(cmd.label);
+        }
+        setShowCommandPalette(false);
+        if (cmd.id === 'explain' || cmd.id === 'learn' || cmd.id === 'explain-flow' || cmd.id === 'bottlenecks' || cmd.id === 'optimize' || cmd.id === 'scale' || cmd.id === 'security' || cmd.id === 'monitoring' || cmd.id === 'compare' || cmd.id === 'best-practices') {
+          onSendMessage(`${cmd.label.toLowerCase()} the current architecture`);
+        } else if (cmd.id === 'export-png') {
+          handleExportPng?.();
+        } else if (cmd.id === 'export-json') {
+          handleExportJson?.();
+        } else if (cmd.id === 'export-svg') {
+          onExportSvg?.();
+        } else if (cmd.id === 'raw-json') {
+          navigator.clipboard.writeText(JSON.stringify({ message: 'Raw JSON view' }, null, 2));
+          alert('Diagram JSON copied to clipboard!');
+        } else if (cmd.id === 'simulate' || cmd.id === 'advanced-sim') {
+          setInputText(cmd.id === 'simulate' ? 'Run simulation with current architecture' : 'Run advanced simulation with custom load patterns and failure injection');
+          onSendMessage(cmd.id === 'simulate' ? 'Run simulation with current architecture' : 'Run advanced simulation with custom load patterns and failure injection');
+        } else if (cmd.id === 'export-all') {
+          handleExportPng?.();
+          handleExportJson?.();
+        } else if (cmd.id === 'validate') {
+          onOrchestrateAgents?.('Validate the current architecture diagram for issues and best practices');
+        } else if (cmd.id === 'typesafe-validate') {
+          onOrchestrateAgents?.('Run TypeSafe AI structured quality validation on current architecture');
+        } else if (cmd.id === 'compare') {
+          onOrchestrateAgents?.('Compare current architecture with best practices and alternatives');
+        }
+        setTimeout(() => inputRef.current?.focus(), 0);
+      }
+    } else if (e.key === 'Escape') {
+      setShowCommandPalette(false);
+      setInputText('');
+      setFocusedCommandIndex(0);
+      setTimeout(() => inputRef.current?.focus(), 0);
+    }
+  };
+  
+  // Handle ArrowUp/ArrowDown on the palette container
+  const handlePaletteKeyDown = (e: React.KeyboardEvent) => {
+    if (!showCommandPalette) return;
+    
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      e.stopPropagation();
+      setFocusedCommandIndex(prev => Math.min(prev + 1, filteredCommands.length - 1));
+      // Focus the next button
+      setTimeout(() => {
+        commandRefs.current[Math.min(focusedCommandIndex + 1, filteredCommands.length - 1)]?.focus();
+      }, 0);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      e.stopPropagation();
+      setFocusedCommandIndex(prev => Math.max(prev - 1, 0));
+      // Focus the previous button
+      setTimeout(() => {
+        commandRefs.current[Math.max(focusedCommandIndex - 1, 0)]?.focus();
+      }, 0);
+    }
+  };
+
+  // Reset focused index when commands change
+  useEffect(() => {
+    setFocusedCommandIndex(0);
+  }, [filteredCommands, showCommandPalette]);
+
+  // Handle input changes - when user types in filter, update filter
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setInputText(value);
+    
+    const lastSlashIndex = value.lastIndexOf('/');
+    if (lastSlashIndex >= 0) {
+      setShowCommandPalette(true);
+      if (lastSlashIndex === value.length - 1) {
+        setCommandFilter('');
+      } else {
+        setCommandFilter(getFilterText(value));
+      }
+    } else {
+      setShowCommandPalette(false);
+    }
+  };
+
+  // Auto-focus first command when palette opens
+  useEffect(() => {
+    if (showCommandPalette && filteredCommands.length > 0) {
+      // Focus is handled by the input - we track selection via focusedCommandIndex
+      setFocusedCommandIndex(0);
+    }
+  }, [showCommandPalette, filteredCommands]);
+
   return (
     <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30 w-full max-w-2xl px-4 select-none">
+      {/* Command Palette - rendered outside chat drawer so it works even when collapsed */}
+      {showCommandPalette && (
+        <div 
+          ref={paletteRef}
+          onKeyDown={handlePaletteKeyDown}
+          tabIndex={0}
+          className="mb-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 animate-in slide-in-from-bottom-2"
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <kbd className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded text-[10px] font-mono">/</kbd>
+            <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
+              {mode === 'learner' ? 'Learner Commands' : 'Pro Commands'}
+            </span>
+            <span className="text-[10px] text-slate-400 ml-auto">Type to filter...</span>
+          </div>
+          <div className="max-h-40 overflow-y-auto space-y-1">
+            {filteredCommands.map((cmd, index) => {
+              const isDirectAction = directActionCommands.includes(cmd.id);
+              const isFocused = index === focusedCommandIndex;
+              
+              return (
+                <button
+                  key={cmd.id}
+                  ref={(el) => { commandRefs.current[index] = el; }}
+                  tabIndex={0}
+                  data-command-btn={cmd.id}
+                  onClick={() => {
+                    // For direct action commands, don't set input text
+                    if (!isDirectAction) {
+                      setInputText(cmd.label);
+                    }
+                    setShowCommandPalette(false);
+                    if (cmd.id === 'explain' || cmd.id === 'learn' || cmd.id === 'explain-flow' || cmd.id === 'bottlenecks' || cmd.id === 'optimize' || cmd.id === 'scale' || cmd.id === 'security' || cmd.id === 'monitoring' || cmd.id === 'compare' || cmd.id === 'best-practices') {
+                      onSendMessage(`${cmd.label.toLowerCase()} the current architecture`);
+                    } else if (cmd.id === 'export-png') {
+                      handleExportPng?.();
+                    } else if (cmd.id === 'export-json') {
+                      handleExportJson?.();
+                    } else if (cmd.id === 'export-svg') {
+                      onExportSvg?.();
+                    } else if (cmd.id === 'raw-json') {
+                      navigator.clipboard.writeText(JSON.stringify({ message: 'Raw JSON view' }, null, 2));
+                      alert('Diagram JSON copied to clipboard!');
+                    } else if (cmd.id === 'simulate' || cmd.id === 'advanced-sim') {
+                      setInputText(cmd.id === 'simulate' ? 'Run simulation with current architecture' : 'Run advanced simulation with custom load patterns and failure injection');
+                      onSendMessage(cmd.id === 'simulate' ? 'Run simulation with current architecture' : 'Run advanced simulation with custom load patterns and failure injection');
+                    } else if (cmd.id === 'export-all') {
+                      handleExportPng?.();
+                      handleExportJson?.();
+                    } else if (cmd.id === 'validate') {
+                      onOrchestrateAgents?.('Validate the current architecture diagram for issues and best practices');
+                    } else if (cmd.id === 'typesafe-validate') {
+                      onOrchestrateAgents?.('Run TypeSafe AI structured quality validation on current architecture');
+                    } else if (cmd.id === 'compare') {
+                      onOrchestrateAgents?.('Compare current architecture with best practices and alternatives');
+                    }
+                  }}
+                  className={`w-full flex items-center gap-2 px-2 py-1.5 text-left rounded-lg transition-colors text-xs ${
+                    isFocused
+                      ? 'bg-blue-50 dark:bg-blue-900/30 border border-blue-500'
+                      : 'hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <span className="text-lg">{cmd.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-slate-800 dark:text-slate-200 truncate">{cmd.label}</div>
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate">{cmd.description}</div>
+                  </div>
+                  {isFocused && <span className="text-blue-500 text-xs">▸</span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Expanded Chat Drawer */}
       {isOpen && (
         <div className="mb-3 bg-white/98 backdrop-blur-xl border border-slate-200/90 rounded-2xl shadow-2xl overflow-hidden flex flex-col h-[400px] animate-in fade-in slide-in-from-bottom-6">
@@ -303,9 +568,10 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
                       <User className="w-3.5 h-3.5" />
                     </div>
                   )}
-                </div>
+</div>
               ))
             )}
+
             {isLoading && (
               <>
                 <div className="flex gap-2.5 items-center text-slate-400 text-xs">
@@ -350,31 +616,10 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
           <span className="hidden sm:inline capitalize">{mode}</span>
         </button>
 
-        {/* Mode-specific feature buttons */}
+        {/* Mode-specific feature buttons - minimal, use "/" command palette for more */}
         {mode === 'learner' && (
           <>
-            {/* Learner: Show Explanations Toggle */}
-            <button
-              type="button"
-              onClick={() => {
-                const msgIndex = messages.findIndex(m => m.sender === 'assistant');
-                if (msgIndex !== -1) {
-                  setMessages(prev => prev.map((msg, i) => 
-                    i === msgIndex ? { ...msg, text: msg.text + '\n\n💡 **Learner Tip:** ' + 
-                      (mode === 'learner' ? 
-                        'Each component has an "explanation" field that teaches you WHY this component was chosen and WHAT it does in the system.' : 
-                        'Pro mode shows detailed specs. Switch to Learner mode for educational explanations!'
-                      ) 
-                    } : msg
-                  ));
-                }
-              }}
-              title="Add educational explanation to last AI response"
-              className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors shrink-0"
-            >
-              <HelpCircle className="w-4 h-4" />
-            </button>
-            {/* Learner: Show Tips Toggle */}
+            {/* Learner: Show Tips - Quick access to learning mode */}
             <button
               type="button"
               onClick={() => {
@@ -382,7 +627,7 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
                 if (!isOpen) setIsOpen(true);
                 onSendMessage('Explain the data flow step-by-step in learner mode');
               }}
-              title="Ask for learning-focused explanation"
+              title="Quick learning tip (or type '/' for more commands)"
               className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors shrink-0"
             >
               <Zap className="w-4 h-4" />
@@ -391,62 +636,17 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
         )}
         {mode === 'pro' && (
           <>
-            {/* Pro: Raw JSON View */}
-            <button
-              type="button"
-              onClick={() => {
-                // Find the last AI message with diagram data
-                const lastAiMsg = [...messages].reverse().find(m => m.sender === 'assistant');
-                if (lastAiMsg && lastAiMsg.text.includes('Diagram nodes:')) {
-                  navigator.clipboard.writeText(JSON.stringify({
-                    message: 'Raw JSON view - open browser dev tools to see full diagram object',
-                    timestamp: new Date().toISOString()
-                  }, null, 2));
-                  alert('Diagram JSON copied to clipboard! Paste into a JSON viewer.');
-                } else {
-                  alert('Generate a diagram first, then click this button to copy the raw JSON.');
-                }
-              }}
-              title="Copy raw architecture JSON to clipboard"
-              className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors shrink-0"
-            >
-              <Layers className="w-4 h-4" />
-            </button>
-            {/* Pro: Advanced Simulation */}
-            <button
-              type="button"
-              onClick={() => {
-                setInputText('Run advanced simulation with custom load patterns and failure injection');
-                if (!isOpen) setIsOpen(true);
-                onSendMessage('Run advanced simulation with custom load patterns and failure injection');
-              }}
-              title="Advanced simulation controls"
-              className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors shrink-0"
-            >
-              <Zap className="w-4 h-4" />
-            </button>
-            {/* Pro: Export Options */}
+            {/* Pro: Quick export - other exports via "/" */}
             <button
               type="button"
               onClick={() => {
                 onExportPng?.();
                 onExportJson?.();
               }}
-              title="Export architecture (PNG, JSON)"
+              title="Quick export PNG+JSON (type '/' for SVG, validate, etc.)"
               className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors shrink-0"
             >
               <Copy className="w-4 h-4" />
-            </button>
-            {/* Pro: Export SVG */}
-            <button
-              type="button"
-              onClick={() => {
-                onExportSvg?.();
-              }}
-              title="Export architecture as SVG"
-              className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors shrink-0"
-            >
-              <FileText className="w-4 h-4" />
             </button>
           </>
         )}
@@ -476,14 +676,17 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
 
         {/* Input Text Field */}
         <input
+          ref={inputRef}
           type="text"
           value={inputText}
-          onChange={(e) => setInputText(e.target.value)}
+          onChange={handleInputChange}
+          onKeyDown={handleKeyDown}
           placeholder={
             nodesCount === 0
               ? 'Enter system design prompt (e.g. "Design Uber ride hailing")...'
               : 'Ask a question about current diagram or enter "Design [system]"...'
           }
+          title="Type '/' for command palette with all actions"
           className="flex-1 bg-transparent px-2.5 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none"
         />
 
@@ -513,5 +716,4 @@ export const FloatingAssistant: React.FC<FloatingAssistantProps> = ({
     </div>
   );
 };
-
 export default FloatingAssistant;

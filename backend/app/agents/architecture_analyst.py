@@ -45,6 +45,7 @@ Key outputs:
             "match_prompt_to_preset",
             "generate_architecture_from_prompt",
             "modify_existing_architecture",
+            "validate_architecture_quality",
         ]
 
     async def execute(self, context: AgentContext) -> AgentResult:
@@ -244,6 +245,21 @@ Respond ONLY with valid JSON.
 
             reasoning_parts.append(f"Completed analysis: {len(analysis.get('bottlenecks', []))} bottlenecks, {len(analysis.get('recommendations', []))} recommendations")
             reasoning_parts.append(f"HLD: {bool(analysis.get('hld_spec'))}, LLD: {bool(analysis.get('lld_spec'))}")
+
+            # TypeSafe AI Validation
+            typesafe_validation_result = await self._call_tool("validate_architecture_quality",
+                architecture_json=analysis)
+            tool_calls.append({"tool": "validate_architecture_quality", "result": typesafe_validation_result.success})
+            
+            if typesafe_validation_result.success and typesafe_validation_result.data:
+                typesafe_data = typesafe_validation_result.data
+                reasoning_parts.append(f"TypeSafe validation: {typesafe_data.get('summary', 'Completed')}")
+                # Store for diagram builder and orchestrator
+                context.shared_memory["typesafe_validation"] = typesafe_data
+                # Merge recommendations
+                typesafe_recs = typesafe_data.get("recommendations", [])
+                if typesafe_recs:
+                    analysis.setdefault("recommendations", []).extend(typesafe_recs)
 
             return AgentResult(
                 agent_role=self.role,
@@ -1398,3 +1414,27 @@ async def modify_existing_architecture(canvas_state: Dict[str, Any], user_prompt
         "confidence": 0.8,
         "preset_based": False,
     }
+
+
+async def validate_architecture_quality(architecture_json: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Validate architecture using TypeSafe AI structured evaluation.
+    Uses Noul (yes/no), Choice (classification), and Score (rating) primitives.
+    """
+    try:
+        from app.typesafe_client import ArchVisTypeSafeClient
+        client = ArchVisTypeSafeClient()
+        results = client.evaluate_architecture(architecture_json)
+        summary = client.generate_summary(results)
+        recommendations = client.generate_recommendations(results)
+        
+        return {
+            "success": True,
+            "data": {
+                **summary,
+                "recommendations": recommendations,
+                "raw_results": results
+            }
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
